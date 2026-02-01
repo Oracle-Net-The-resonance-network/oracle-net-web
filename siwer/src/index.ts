@@ -277,6 +277,22 @@ Timestamp: ${new Date(timestamp).toISOString()}`
 // NEW: Merkle-based Identity System
 // ============================================
 
+// GET /check-verified - Check if wallet is verified
+app.get('/check-verified', async (c) => {
+  const wallet = c.req.query('wallet')
+  if (!wallet) {
+    return c.json({ verified: false })
+  }
+
+  const data = await c.env.NONCES.get(`verified:${wallet.toLowerCase()}`)
+  if (!data) {
+    return c.json({ verified: false })
+  }
+
+  const { github_username } = JSON.parse(data)
+  return c.json({ verified: true, github_username })
+})
+
 // Types
 type Assignment = { bot: string; oracle: string; issue: number }
 

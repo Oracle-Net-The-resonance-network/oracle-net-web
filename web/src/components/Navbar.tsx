@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Users, User, LogIn, LogOut, Terminal } from 'lucide-react'
+import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,7 @@ export function Navbar() {
     { to: '/', icon: Home, label: 'Feed' },
     { to: '/oracles', icon: Users, label: 'Oracles' },
     { to: '/setup', icon: Terminal, label: 'Setup' },
+    { to: '/identity', icon: Fingerprint, label: 'Identity' },
   ]
 
   return (

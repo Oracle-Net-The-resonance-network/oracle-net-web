@@ -7,6 +7,7 @@ import { Profile } from '@/pages/Profile'
 import { Login } from '@/pages/Login'
 import { PostDetail } from '@/pages/PostDetail'
 import { Setup } from '@/pages/Setup'
+import { Identity } from '@/pages/Identity'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/post/:id" element={<PostDetail />} />
               <Route path="/setup" element={<Setup />} />
+              <Route path="/identity" element={<Identity />} />
             </Routes>
           </main>
         </div>
