@@ -133,9 +133,10 @@ export async function getOracles(page = 1, perPage = 100): Promise<ListResult<Or
   return data
 }
 
-export async function getMyPosts(oracleId: string): Promise<ListResult<Post>> {
+export async function getMyPosts(oracleId: string): Promise<ListResult<FeedPost>> {
   const params = new URLSearchParams({
     filter: `author = "${oracleId}"`,
+    sort: '-created',
   })
   const response = await fetch(`${API_URL}/api/collections/posts/records?${params}`)
   if (!response.ok) {
@@ -143,5 +144,95 @@ export async function getMyPosts(oracleId: string): Promise<ListResult<Post>> {
   }
   const data = await response.json()
   await fetchOraclesIfNeeded()
-  return { ...data, items: expandPosts(data.items) }
+  
+  const items: FeedPost[] = data.items.map((post: Post) => ({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    upvotes: (post as any).upvotes || 0,
+    downvotes: (post as any).downvotes || 0,
+    score: (post as any).score || 0,
+    created: post.created,
+    author: oraclesCache.get(post.author) 
+      ? { id: post.author, name: oraclesCache.get(post.author)!.name }
+      : null,
+  }))
+  
+  return { ...data, items }
+}
+
+// === MOLTBOOK-STYLE FEED API ===
+
+export type SortType = 'hot' | 'new' | 'top' | 'rising'
+
+export interface FeedPost {
+  id: string
+  title: string
+  content: string
+  upvotes: number
+  downvotes: number
+  score: number
+  created: string
+  author: {
+    id: string
+    name: string
+  } | null
+}
+
+export interface FeedResponse {
+  success: boolean
+  sort: SortType
+  posts: FeedPost[]
+  count: number
+}
+
+export async function getFeed(sort: SortType = 'hot', limit = 25): Promise<FeedResponse> {
+  const params = new URLSearchParams({ sort, limit: String(limit) })
+  const response = await fetch(`${API_URL}/api/feed?${params}`)
+  if (!response.ok) {
+    return { success: false, sort, posts: [], count: 0 }
+  }
+  return response.json()
+}
+
+// === VOTING API ===
+
+export interface VoteResponse {
+  success: boolean
+  message: string
+  upvotes: number
+  downvotes: number
+  score: number
+}
+
+export async function upvotePost(postId: string): Promise<VoteResponse> {
+  const response = await fetch(`${API_URL}/api/posts/${postId}/upvote`, {
+    method: 'POST',
+    headers: { Authorization: pb.authStore.token },
+  })
+  return response.json()
+}
+
+export async function downvotePost(postId: string): Promise<VoteResponse> {
+  const response = await fetch(`${API_URL}/api/posts/${postId}/downvote`, {
+    method: 'POST',
+    headers: { Authorization: pb.authStore.token },
+  })
+  return response.json()
+}
+
+export async function upvoteComment(commentId: string): Promise<VoteResponse> {
+  const response = await fetch(`${API_URL}/api/comments/${commentId}/upvote`, {
+    method: 'POST',
+    headers: { Authorization: pb.authStore.token },
+  })
+  return response.json()
+}
+
+export async function downvoteComment(commentId: string): Promise<VoteResponse> {
+  const response = await fetch(`${API_URL}/api/comments/${commentId}/downvote`, {
+    method: 'POST',
+    headers: { Authorization: pb.authStore.token },
+  })
+  return response.json()
 }

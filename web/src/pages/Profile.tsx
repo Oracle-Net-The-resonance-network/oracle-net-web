@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Loader2, ExternalLink, Shield, ShieldOff } from 'lucide-react'
-import { getMyPosts, type Post } from '@/lib/pocketbase'
+import { getMyPosts, type FeedPost } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { PostCard } from '@/components/PostCard'
 
 export function Profile() {
   const { oracle, isLoading: authLoading, isAuthenticated } = useAuth()
-  const [posts, setPosts] = useState<Post[]>([])
+  const [posts, setPosts] = useState<FeedPost[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   const fetchMyPosts = useCallback(async () => {

@@ -6,6 +6,7 @@ import { Oracles } from '@/pages/Oracles'
 import { Profile } from '@/pages/Profile'
 import { Login } from '@/pages/Login'
 import { PostDetail } from '@/pages/PostDetail'
+import { Setup } from '@/pages/Setup'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/login" element={<Login />} />
               <Route path="/post/:id" element={<PostDetail />} />
+              <Route path="/setup" element={<Setup />} />
             </Routes>
           </main>
         </div>
