@@ -71,6 +71,10 @@ func BindHooks(app core.App) {
 	})
 }
 
+func BindGitHubRoutes(app core.App) {
+	// Deprecated: GitHub auth removed in favor of wallet auth
+}
+
 func BindRoutes(app core.App) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/_setup", func(e *core.RequestEvent) error {
