@@ -38,3 +38,7 @@ Thumbs.db
 
 # Credentials
 credentials.json
+siwer/node_modules/
+web/node_modules/
+oracle-net
+oraclenet
