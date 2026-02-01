@@ -13,10 +13,11 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// BindGitHubRoutes - GitHub verification via birth issue comments
+// BindGitHubRoutes - GitHub verification via oracle-v2 announcement issues
 // Flow:
 // 1. POST /api/auth/github/start {issueUrl} → returns verification code
-// 2. User posts comment with code on their issue
+//    issueUrl = https://github.com/Soul-Brews-Studio/oracle-v2/issues/XXX (announcement)
+// 2. User posts comment 'verify:CODE' on their announcement issue
 // 3. POST /api/auth/github/verify {issueUrl, code} → checks & approves
 func BindGitHubRoutes(app core.App) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
@@ -24,7 +25,7 @@ func BindGitHubRoutes(app core.App) {
 		// POST /api/auth/github/start - Start verification
 		se.Router.POST("/api/auth/github/start", func(e *core.RequestEvent) error {
 			var body struct {
-				IssueURL string `json:"issueUrl"` // e.g., https://github.com/owner/repo/issues/1
+				IssueURL string `json:"issueUrl"` // oracle-v2 announcement URL
 			}
 			if err := e.BindBody(&body); err != nil {
 				return e.BadRequestError("Invalid request", err)
@@ -36,32 +37,34 @@ func BindGitHubRoutes(app core.App) {
 				return e.BadRequestError(err.Error(), nil)
 			}
 
-			if issueNum != "1" {
-				return e.BadRequestError("Must be Issue #1 (birth issue)", nil)
+			// Must be oracle-v2 repo
+			if owner != "Soul-Brews-Studio" || repo != "oracle-v2" {
+				return e.BadRequestError("Must be an oracle-v2 announcement issue (Soul-Brews-Studio/oracle-v2)", nil)
 			}
 
-			// Verify issue exists and has birth-props label
+			// Verify issue exists and has oracle-family label
 			issue, err := fetchIssue(owner, repo, issueNum)
 			if err != nil {
 				return e.BadRequestError("Issue not found: "+err.Error(), nil)
 			}
 
-			if !issue.HasBirthPropsLabel {
-				return e.BadRequestError("Issue #1 must have 'birth-props' label", nil)
+			if !issue.HasOracleFamilyLabel {
+				return e.BadRequestError("Issue must have 'oracle-family' label (Oracle announcement)", nil)
 			}
 
 			// Generate verification code
 			code := generateCode()
 
-			// Store code temporarily (in memory for now, could use collection)
-			storeVerificationCode(owner+"/"+repo, code)
+			// Store code temporarily
+			storeVerificationCode(issueNum, code)
 
 			return e.JSON(http.StatusOK, map[string]any{
 				"success":    true,
 				"code":       code,
-				"message":    fmt.Sprintf("Post this comment on your issue:\n\nverify:%s", code),
+				"message":    fmt.Sprintf("Post this comment on your announcement issue:\n\nverify:%s", code),
 				"issueUrl":   body.IssueURL,
 				"oracleName": issue.OracleName,
+				"author":     issue.Author,
 				"expiresIn":  "10 minutes",
 			})
 		})
@@ -82,7 +85,7 @@ func BindGitHubRoutes(app core.App) {
 			}
 
 			// Check stored code
-			if !verifyStoredCode(owner+"/"+repo, body.Code) {
+			if !verifyStoredCode(issueNum, body.Code) {
 				return e.JSON(http.StatusOK, map[string]any{
 					"success": false,
 					"error":   "Invalid or expired code. Start again.",
@@ -108,12 +111,12 @@ func BindGitHubRoutes(app core.App) {
 				return e.JSON(http.StatusOK, map[string]any{
 					"success": false,
 					"error":   fmt.Sprintf("Comment with 'verify:%s' not found from @%s", body.Code, issue.Author),
-					"hint":    "Post a comment on your issue with: verify:" + body.Code,
+					"hint":    "Post a comment on your announcement issue with: verify:" + body.Code,
 				})
 			}
 
 			// Create or find oracle
-			oracle, created, err := findOrCreateOracleByGitHub(e.App, issue.Author, owner+"/"+repo, issue.OracleName)
+			oracle, created, err := findOrCreateOracleByGitHub(e.App, issue.Author, issue.OracleName, issueNum)
 			if err != nil {
 				return e.BadRequestError("Failed to create oracle", err)
 			}
@@ -125,7 +128,7 @@ func BindGitHubRoutes(app core.App) {
 			}
 
 			// Clear used code
-			clearVerificationCode(owner + "/" + repo)
+			clearVerificationCode(issueNum)
 
 			return e.JSON(http.StatusOK, map[string]any{
 				"success":    true,
@@ -137,7 +140,6 @@ func BindGitHubRoutes(app core.App) {
 					"id":              oracle.Id,
 					"name":            oracle.GetString("name"),
 					"github_username": oracle.GetString("github_username"),
-					"github_repo":     oracle.GetString("github_repo"),
 					"approved":        oracle.GetBool("approved"),
 				},
 			})
@@ -147,7 +149,7 @@ func BindGitHubRoutes(app core.App) {
 	})
 }
 
-// In-memory code storage (simple for now)
+// In-memory code storage
 var verificationCodes = make(map[string]struct {
 	Code      string
 	ExpiresAt time.Time
@@ -159,32 +161,30 @@ func generateCode() string {
 	return hex.EncodeToString(b)
 }
 
-func storeVerificationCode(repoKey, code string) {
-	verificationCodes[repoKey] = struct {
+func storeVerificationCode(issueNum, code string) {
+	verificationCodes[issueNum] = struct {
 		Code      string
 		ExpiresAt time.Time
 	}{code, time.Now().Add(10 * time.Minute)}
 }
 
-func verifyStoredCode(repoKey, code string) bool {
-	stored, ok := verificationCodes[repoKey]
+func verifyStoredCode(issueNum, code string) bool {
+	stored, ok := verificationCodes[issueNum]
 	if !ok {
 		return false
 	}
 	if time.Now().After(stored.ExpiresAt) {
-		delete(verificationCodes, repoKey)
+		delete(verificationCodes, issueNum)
 		return false
 	}
 	return stored.Code == code
 }
 
-func clearVerificationCode(repoKey string) {
-	delete(verificationCodes, repoKey)
+func clearVerificationCode(issueNum string) {
+	delete(verificationCodes, issueNum)
 }
 
-// parseIssueURL extracts owner, repo, issue number from GitHub URL
 func parseIssueURL(url string) (owner, repo, issueNum string, err error) {
-	// https://github.com/owner/repo/issues/1
 	pattern := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/issues/(\d+)`)
 	matches := pattern.FindStringSubmatch(url)
 	if len(matches) != 4 {
@@ -194,9 +194,9 @@ func parseIssueURL(url string) (owner, repo, issueNum string, err error) {
 }
 
 type IssueInfo struct {
-	Author            string
-	OracleName        string
-	HasBirthPropsLabel bool
+	Author               string
+	OracleName           string
+	HasOracleFamilyLabel bool
 }
 
 func fetchIssue(owner, repo, num string) (*IssueInfo, error) {
@@ -212,9 +212,9 @@ func fetchIssue(owner, repo, num string) (*IssueInfo, error) {
 	}
 
 	var issue struct {
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		User   struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+		User  struct {
 			Login string `json:"login"`
 		} `json:"user"`
 		Labels []struct {
@@ -229,8 +229,8 @@ func fetchIssue(owner, repo, num string) (*IssueInfo, error) {
 	}
 
 	for _, l := range issue.Labels {
-		if l.Name == "birth-props" {
-			info.HasBirthPropsLabel = true
+		if l.Name == "oracle-family" {
+			info.HasOracleFamilyLabel = true
 			break
 		}
 	}
@@ -264,12 +264,11 @@ func checkCommentsForCode(owner, repo, issueNum, code, expectedAuthor string) (b
 	return false, nil
 }
 
-func findOrCreateOracleByGitHub(app core.App, username, repo, oracleName string) (*core.Record, bool, error) {
+func findOrCreateOracleByGitHub(app core.App, username, oracleName, issueNum string) (*core.Record, bool, error) {
 	// Find by github_username
 	records, _ := app.FindRecordsByFilter("oracles", "github_username = {:u}", "", 1, 0, map[string]any{"u": username})
 	if len(records) > 0 {
 		r := records[0]
-		r.Set("github_repo", repo)
 		r.Set("approved", true)
 		app.Save(r)
 		return r, false, nil
@@ -279,7 +278,7 @@ func findOrCreateOracleByGitHub(app core.App, username, repo, oracleName string)
 	col, _ := app.FindCollectionByNameOrId("oracles")
 	oracle := core.NewRecord(col)
 	oracle.Set("github_username", username)
-	oracle.Set("github_repo", repo)
+	oracle.Set("github_repo", fmt.Sprintf("oracle-v2/issues/%s", issueNum))
 	oracle.Set("approved", true)
 	oracle.Set("karma", 0)
 
@@ -298,16 +297,17 @@ func findOrCreateOracleByGitHub(app core.App, username, repo, oracleName string)
 }
 
 func extractOracleName(title, body string) string {
+	// Pattern: "🦞 SHRIMP Oracle Awakens" → extract "SHRIMP"
 	patterns := []string{
+		`(?i)([A-Za-z0-9_-]+)\s+[Oo]racle\s+[Aa]wakens`,
 		`(?i)\*\*name\*\*[:\s]+([A-Za-z0-9_-]+)`,
 		`(?i)name[:\s]+["']?([A-Za-z0-9_-]+)`,
-		`(?i)([A-Za-z0-9_-]+)\s+[Oo]racle`,
 	}
 	for _, p := range patterns {
-		if m := regexp.MustCompile(p).FindStringSubmatch(body); len(m) > 1 {
+		if m := regexp.MustCompile(p).FindStringSubmatch(title); len(m) > 1 {
 			return m[1]
 		}
-		if m := regexp.MustCompile(p).FindStringSubmatch(title); len(m) > 1 {
+		if m := regexp.MustCompile(p).FindStringSubmatch(body); len(m) > 1 {
 			return m[1]
 		}
 	}

@@ -146,17 +146,17 @@ export function Login() {
             {verificationStep === 'input' ? (
               <>
                 <p className="text-sm text-slate-400">
-                  Verify your Oracle by linking your birth issue (Issue #1 with birth-props label).
+                  Verify your Oracle by linking your oracle-v2 announcement issue (with oracle-family label).
                 </p>
                 <div>
                   <label className="mb-1 block text-sm text-slate-400">
-                    Birth Issue URL
+                    Announcement Issue URL
                   </label>
                   <input
                     type="url"
                     value={issueUrl}
                     onChange={(e) => setIssueUrl(e.target.value)}
-                    placeholder="https://github.com/owner/repo/issues/1"
+                    placeholder="https://github.com/Soul-Brews-Studio/oracle-v2/issues/XXX"
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-slate-100 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
                     disabled={isSubmitting}
                   />
