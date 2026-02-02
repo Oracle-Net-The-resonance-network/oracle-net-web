@@ -38,6 +38,10 @@ export function Identity() {
   const [copied, setCopied] = useState<string | null>(null)
   const [verifySuccess, setVerifySuccess] = useState<{ oracle_name: string; github_username: string } | null>(null)
 
+  // State for verification issue fetching
+  const [verificationIssueData, setVerificationIssueData] = useState<{ title: string; author: string } | null>(null)
+  const [isFetchingVerificationIssue, setIsFetchingVerificationIssue] = useState(false)
+
   // Assignment state (for bot management - only shown when fully verified)
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [newBot, setNewBot] = useState('')
@@ -152,6 +156,45 @@ export function Identity() {
     }
     return `https://github.com/${DEFAULT_BIRTH_REPO}/issues/${input.trim()}`
   }
+
+  // Fetch verification issue when URL changes
+  useEffect(() => {
+    const fetchVerificationIssue = async () => {
+      const fullUrl = normalizeVerifyIssueUrl(verificationIssueUrl)
+      if (!fullUrl) {
+        setVerificationIssueData(null)
+        return
+      }
+
+      // Parse URL to get owner/repo/issue
+      const match = fullUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+      if (!match) return
+
+      const [, owner, repo, issueNumber] = match
+      setIsFetchingVerificationIssue(true)
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+          headers: { 'User-Agent': 'OracleNet-Web' }
+        })
+        if (!res.ok) throw new Error('Failed to fetch')
+        const issue = await res.json()
+
+        setVerificationIssueData({
+          title: issue.title || '',
+          author: issue.user?.login || ''
+        })
+      } catch {
+        setVerificationIssueData(null)
+      } finally {
+        setIsFetchingVerificationIssue(false)
+      }
+    }
+
+    // Debounce the fetch
+    const timer = setTimeout(fetchVerificationIssue, 500)
+    return () => clearTimeout(timer)
+  }, [verificationIssueUrl])
 
   // Convert verification issue input to full URL (handles both "4" and full URLs)
   const normalizeVerifyIssueUrl = (input: string) => {
@@ -621,23 +664,37 @@ After running, paste the issue URL in the field below.`, 'ghCmd')}
                   <label className="block text-xs text-slate-500 mb-2">
                     Paste the verification issue number or URL:
                   </label>
-                  <input
-                    type="text"
-                    placeholder="4 or https://github.com/Soul-Brews-Studio/oracle-identity/issues/4"
-                    value={verificationIssueUrl}
-                    onChange={(e) => setVerificationIssueUrl(e.target.value)}
-                    className="w-full rounded-lg bg-slate-800 px-4 py-3 text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="11 or https://github.com/Soul-Brews-Studio/oracle-identity/issues/11"
+                      value={verificationIssueUrl}
+                      onChange={(e) => setVerificationIssueUrl(e.target.value)}
+                      className="w-full rounded-lg bg-slate-800 px-4 py-3 text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                    />
+                    {isFetchingVerificationIssue && (
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-slate-500" />
+                    )}
+                  </div>
                   {verificationIssueUrl && (
-                    <a
-                      href={normalizeVerifyIssueUrl(verificationIssueUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 mt-2 mb-3"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      {normalizeVerifyIssueUrl(verificationIssueUrl).replace('https://github.com/', '')}
-                    </a>
+                    <div className="mt-2 space-y-1 mb-3">
+                      <a
+                        href={normalizeVerifyIssueUrl(verificationIssueUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        {normalizeVerifyIssueUrl(verificationIssueUrl).replace('https://github.com/', '')}
+                      </a>
+                      {verificationIssueData && (
+                        <div className="text-xs text-slate-500">
+                          <span className="text-slate-400">{verificationIssueData.title}</span>
+                          <span className="mx-1">by</span>
+                          <span className="text-slate-400">@{verificationIssueData.author}</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                   {!verificationIssueUrl && <div className="mb-3" />}
 
