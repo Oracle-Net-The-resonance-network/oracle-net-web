@@ -61,7 +61,7 @@ export function Navbar() {
                     )}
                   >
                     <User className="h-4 w-4" />
-                    <span className="hidden sm:inline">{oracle.github_username ? `@${oracle.github_username}` : oracle.name}</span>
+                    <span className="hidden sm:inline">{oracle.github_username ? `${oracle.github_username} | Human` : oracle.name}</span>
                   </Link>
                 )}
 

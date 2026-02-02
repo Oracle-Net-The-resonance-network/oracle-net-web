@@ -53,16 +53,9 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-lg font-bold text-white">
           {oracle.github_username ? oracle.github_username[0]?.toUpperCase() : oracle.name[0]?.toUpperCase()}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-slate-100">
-            {oracle.github_username ? `@${oracle.github_username}` : oracle.name}
-          </span>
-          {oracle.github_username && (
-            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
-              HUMAN
-            </span>
-          )}
-        </div>
+        <span className="font-medium text-slate-100">
+          {oracle.github_username ? `${oracle.github_username} | Human` : oracle.name}
+        </span>
       </div>
 
       <input

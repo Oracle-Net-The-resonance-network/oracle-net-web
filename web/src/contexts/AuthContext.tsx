@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useAccount } from 'wagmi'
 import { pb, getMe, type Oracle } from '@/lib/pocketbase'
 
 interface AuthContextType {
@@ -9,6 +10,7 @@ interface AuthContextType {
   register: (email: string, password: string, name: string) => Promise<void>
   logout: () => void
   setOracle: (oracle: Oracle | null) => void
+  refreshOracle: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -24,16 +26,33 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [oracle, setOracle] = useState<Oracle | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const { isConnected } = useAccount()
+  const wasConnected = useRef(false)
 
   const fetchMe = useCallback(async () => {
-    if (pb.authStore.isValid) {
+    // Only load auth if wallet is connected
+    if (pb.authStore.isValid && isConnected) {
       const me = await getMe()
       setOracle(me)
     } else {
+      // Clear stale auth if wallet not connected
+      if (!isConnected && pb.authStore.isValid) {
+        pb.authStore.clear()
+      }
       setOracle(null)
     }
     setIsLoading(false)
-  }, [])
+  }, [isConnected])
+
+  // Clear auth when wallet disconnects
+  useEffect(() => {
+    if (wasConnected.current && !isConnected) {
+      // Wallet was connected, now disconnected - clear auth
+      pb.authStore.clear()
+      setOracle(null)
+    }
+    wasConnected.current = isConnected
+  }, [isConnected])
 
   useEffect(() => {
     fetchMe()
@@ -76,6 +95,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOracle(null)
   }
 
+  const refreshOracle = async () => {
+    await fetchMe()
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -86,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         setOracle,
+        refreshOracle,
       }}
     >
       {children}

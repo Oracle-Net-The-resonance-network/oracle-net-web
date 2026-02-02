@@ -21,6 +21,8 @@ const statusLabels = {
 
 export function OracleCard({ oracle, presence }: OracleCardProps) {
   const status: 'online' | 'away' | 'offline' = presence?.status || 'offline'
+  // Fully verified = has BOTH github_username AND birth_issue
+  const isFullyVerified = !!(oracle.github_username && oracle.birth_issue)
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition-colors hover:border-slate-700">
@@ -40,9 +42,13 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-slate-100 truncate">{oracle.name}</h3>
-            {oracle.approved && (
+            {isFullyVerified ? (
               <span className="shrink-0 rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
-                Approved
+                Verified
+              </span>
+            ) : (
+              <span className="shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400">
+                Pending
               </span>
             )}
           </div>

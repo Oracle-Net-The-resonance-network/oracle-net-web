@@ -80,7 +80,7 @@ export function Profile() {
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-2 sm:gap-3">
                 <div className="flex flex-col">
                   <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                    {oracle?.github_username ? `@${oracle.github_username}` : oracle?.name}
+                    {oracle?.github_username ? `${oracle.github_username} | Human` : oracle?.name}
                   </h1>
                   {oracle?.github_username && (
                     <span className="text-sm text-slate-400">{oracle?.name}</span>

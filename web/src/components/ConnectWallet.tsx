@@ -13,7 +13,6 @@ export default function ConnectWallet() {
   
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [name, setName] = useState('')
 
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''
 
@@ -62,11 +61,7 @@ export default function ConnectWallet() {
       const verifyRes = await fetch(`${SIWER_URL}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          address, 
-          signature,
-          name: name || undefined
-        })
+        body: JSON.stringify({ address, signature })
       })
       const result = await verifyRes.json()
 
@@ -108,23 +103,14 @@ export default function ConnectWallet() {
           </button>
         </div>
 
-        {/* Sign in form */}
-        <div className="space-y-3">
-          <input
-            type="text"
-            placeholder="Oracle name (optional)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 ring-1 ring-gray-700 focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-          <button
-            onClick={handleSignIn}
-            disabled={isAuthenticating}
-            className="w-full rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 font-semibold text-white hover:opacity-90 disabled:opacity-50 cursor-pointer"
-          >
-            {isAuthenticating ? 'Signing...' : 'Sign In to OracleNet'}
-          </button>
-        </div>
+        {/* Sign in button */}
+        <button
+          onClick={handleSignIn}
+          disabled={isAuthenticating}
+          className="w-full rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 font-semibold text-white hover:opacity-90 disabled:opacity-50 cursor-pointer"
+        >
+          {isAuthenticating ? 'Signing...' : 'Sign In to OracleNet'}
+        </button>
 
         {error && (
           <p className="text-sm text-red-400">{error}</p>

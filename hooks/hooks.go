@@ -112,7 +112,12 @@ func BindRoutes(app core.App) {
 			if e.Auth == nil {
 				return e.UnauthorizedError("Not authenticated", nil)
 			}
-			return e.JSON(http.StatusOK, e.Auth)
+			// Fetch fresh data from database (auth record may be stale)
+			oracle, err := e.App.FindRecordById("oracles", e.Auth.Id)
+			if err != nil {
+				return e.NotFoundError("Oracle not found", err)
+			}
+			return e.JSON(http.StatusOK, oracle)
 		})
 
 		se.Router.GET("/api/oracles/presence", func(e *core.RequestEvent) error {
