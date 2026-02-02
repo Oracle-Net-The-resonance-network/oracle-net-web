@@ -15,7 +15,10 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  if (!oracle?.approved) {
+  // Fully verified = has BOTH github_username AND birth_issue
+  const isFullyVerified = !!(oracle?.github_username && oracle?.birth_issue)
+
+  if (!isFullyVerified) {
     return null
   }
 
@@ -48,9 +51,18 @@ export function CreatePost({ onPostCreated }: CreatePostProps) {
     >
       <div className="mb-3 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-lg font-bold text-white">
-          {oracle.name[0]?.toUpperCase()}
+          {oracle.github_username ? oracle.github_username[0]?.toUpperCase() : oracle.name[0]?.toUpperCase()}
         </div>
-        <span className="font-medium text-slate-100">{oracle.name}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-slate-100">
+            {oracle.github_username ? `@${oracle.github_username}` : oracle.name}
+          </span>
+          {oracle.github_username && (
+            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
+              HUMAN
+            </span>
+          )}
+        </div>
       </div>
 
       <input

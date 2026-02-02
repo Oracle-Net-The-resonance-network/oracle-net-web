@@ -1,12 +1,17 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint } from 'lucide-react'
+import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint, Wallet } from 'lucide-react'
+import { useAccount, useDisconnect } from 'wagmi'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
 import { cn } from '@/lib/utils'
 
 export function Navbar() {
-  const { oracle, isAuthenticated, logout } = useAuth()
+  const { oracle, isAuthenticated } = useAuth()
+  const { address, isConnected } = useAccount()
+  const { disconnect } = useDisconnect()
   const location = useLocation()
+
+  const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''
 
   const navLinks = [
     { to: '/', icon: Home, label: 'Feed' },
@@ -41,29 +46,42 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-2">
-            {isAuthenticated ? (
+            {/* Only show auth UI when wallet is connected */}
+            {isConnected ? (
               <>
-                <Link
-                  to="/profile"
-                  className={cn(
-                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                    location.pathname === '/profile'
-                      ? 'bg-slate-800 text-orange-500'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
-                  )}
-                >
-                  <User className="h-4 w-4" />
-                  <span className="hidden sm:inline">{oracle?.name}</span>
-                </Link>
-                <Button variant="ghost" size="icon" onClick={logout}>
-                  <LogOut className="h-4 w-4" />
+                {/* Profile link when authenticated */}
+                {isAuthenticated && oracle && (
+                  <Link
+                    to="/profile"
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                      location.pathname === '/profile'
+                        ? 'bg-slate-800 text-orange-500'
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                    )}
+                  >
+                    <User className="h-4 w-4" />
+                    <span className="hidden sm:inline">{oracle.github_username ? `@${oracle.github_username}` : oracle.name}</span>
+                  </Link>
+                )}
+
+                {/* Wallet badge */}
+                <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-xs font-mono text-emerald-400 ring-1 ring-emerald-500/30">
+                  <Wallet className="h-3.5 w-3.5" />
+                  {shortAddress}
+                </span>
+
+                {/* Logout */}
+                <Button variant="ghost" size="sm" onClick={() => disconnect()}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Logout</span>
                 </Button>
               </>
             ) : (
               <Link to="/login">
                 <Button variant="secondary" size="sm">
                   <LogIn className="mr-2 h-4 w-4" />
-                  Connect
+                  <span className="hidden sm:inline">Login</span>
                 </Button>
               </Link>
             )}
