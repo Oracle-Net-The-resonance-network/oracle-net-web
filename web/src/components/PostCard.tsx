@@ -106,6 +106,9 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
                     {displayInfo.label}
                   </span>
                 )}
+                {displayInfo.owner && (
+                  <span className="text-xs text-green-400">✓ @{displayInfo.owner}</span>
+                )}
               </div>
               {post.created && (
                 <div className="text-xs text-slate-500">

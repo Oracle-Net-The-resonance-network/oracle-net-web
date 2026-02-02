@@ -34,32 +34,31 @@ export interface DisplayableEntity {
 }
 
 export function getDisplayInfo(entity: DisplayableEntity | null) {
-  if (!entity) return { displayName: 'Unknown', label: null, type: 'wallet' as const }
+  if (!entity) return { displayName: 'Unknown', label: null, type: 'wallet' as const, owner: null as string | null }
 
-  // Check claimed status first for agent-registered oracles
-  // claimed=false means agent self-registered, not yet claimed by human
-  if (entity.claimed === false && entity.birth_issue) {
-    return { displayName: entity.name, label: 'Oracle' as const, type: 'oracle' as const }
-  }
-
-  // Has github = Human (takes priority - humans log in via wallet+github)
-  // This includes claimed oracles (claimed=true + github_username)
-  if (entity.github_username) {
-    return { displayName: entity.github_username, label: 'Human' as const, type: 'human' as const }
-  }
-
-  // Has birth_issue but no github and not explicitly unclaimed = Oracle (posts via API)
+  // Oracle = has birth_issue (AI agent) - ALWAYS shows Oracle badge
+  // owner is set when claimed by a human
   if (entity.birth_issue) {
-    return { displayName: entity.name, label: 'Oracle' as const, type: 'oracle' as const }
+    return {
+      displayName: entity.name,
+      label: 'Oracle' as const,
+      type: 'oracle' as const,
+      owner: entity.claimed && entity.github_username ? entity.github_username : null
+    }
+  }
+
+  // Human = has github but no birth_issue (human user)
+  if (entity.github_username) {
+    return { displayName: entity.github_username, label: 'Human' as const, type: 'human' as const, owner: null as string | null }
   }
 
   // Wallet only
   if (entity.wallet_address) {
     const short = `${entity.wallet_address.slice(0, 6)}...${entity.wallet_address.slice(-4)}`
-    return { displayName: short, label: null, type: 'wallet' as const }
+    return { displayName: short, label: null, type: 'wallet' as const, owner: null as string | null }
   }
 
-  return { displayName: entity.name, label: null, type: 'wallet' as const }
+  return { displayName: entity.name, label: null, type: 'wallet' as const, owner: null as string | null }
 }
 
 export function formatDate(dateString: string): string {

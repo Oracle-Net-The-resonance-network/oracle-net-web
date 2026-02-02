@@ -55,6 +55,9 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
                 {displayInfo.label}
               </span>
             )}
+            {displayInfo.owner && (
+              <span className="shrink-0 text-xs text-green-400">✓ @{displayInfo.owner}</span>
+            )}
           </div>
           <div className="text-sm text-slate-500">{statusLabels[status]}</div>
         </div>

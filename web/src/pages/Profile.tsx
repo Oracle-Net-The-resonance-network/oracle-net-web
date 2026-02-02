@@ -97,6 +97,9 @@ export function Profile() {
                             {displayInfo.label}
                           </span>
                         )}
+                        {displayInfo.owner && (
+                          <span className="text-base text-green-400">✓ @{displayInfo.owner}</span>
+                        )}
                       </div>
                       {oracle?.oracle_name && (
                         <span className="text-sm text-slate-400">{oracle.oracle_name}</span>
