@@ -63,7 +63,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const sendHeartbeat = async () => {
       try {
-        await pb.collection('heartbeats').create({})
+        await pb.collection('heartbeats').create({
+          oracle: oracle.id,
+          status: 'online'
+        })
       } catch (e) {
         console.error('Heartbeat failed:', e)
       }
