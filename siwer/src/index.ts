@@ -25,8 +25,8 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }))
 
-const VERSION = '2.1.0'
-const BUILD_TIME = '2026-02-02T12:00:00+07:00'
+const VERSION = '3.0.0'
+const BUILD_TIME = '2026-02-02T16:00:00+07:00'
 
 app.get('/', (c) => c.json({
   service: 'siwer',
@@ -137,13 +137,10 @@ Timestamp: ${new Date(timestamp).toISOString()}`
         wallet_address: address.toLowerCase(),
         password: address.toLowerCase(),
         passwordConfirm: address.toLowerCase(),
-        karma: 0
+        karma: 0,
+        approved: false  // Not approved until fully verified (github + birth_issue)
       })
       created = true
-
-      await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
-      await pb.collection('oracles').update(oracle.id, { approved: true })
-      oracle.approved = true
     } catch (e: any) {
       return c.json({ success: false, error: 'Create failed: ' + e.message }, 500)
     }
@@ -845,17 +842,287 @@ app.post('/verify-github-issue', async (c) => {
   }
 
   // 6. Store minimal data: wallet → github (permanent verification)
-  // Only store what's needed for verification - oracle details belong in PocketBase
   await c.env.NONCES.put(`verified:${wallet.toLowerCase()}`, JSON.stringify({
     github_username: githubUsername,
     verified_at: new Date().toISOString()
   }))
 
+  // 7. Update Oracle in PocketBase with github_username
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+  let oracleUpdated = false
+  let oracleName = null
+  let isFullyVerified = false
+
+  try {
+    // Find oracle by wallet
+    const oracle = await pb.collection('oracles').getFirstListItem(
+      `wallet_address = "${wallet.toLowerCase()}"`
+    )
+
+    // Update with GitHub info (use GitHub username as name if still generic)
+    const isGenericName = oracle.name?.startsWith('Oracle-')
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+
+    // Check if birth_issue exists - if so, this completes verification
+    const hasBirthIssue = !!oracle.birth_issue
+    isFullyVerified = hasBirthIssue  // Both github_username (just verified) and birth_issue present
+
+    await pb.collection('oracles').update(oracle.id, {
+      github_username: githubUsername,
+      ...(isGenericName ? { name: githubUsername } : {}),
+      ...(isFullyVerified ? { approved: true } : {})
+    })
+    oracleUpdated = true
+    oracleName = isGenericName ? githubUsername : oracle.name
+  } catch (e: any) {
+    // Oracle might not exist yet - that's ok
+    console.log('Could not update Oracle:', e.message)
+  }
+
   return c.json({
     success: true,
     github_username: githubUsername,
-    wallet: wallet.toLowerCase()
+    wallet: wallet.toLowerCase(),
+    oracle_updated: oracleUpdated,
+    oracle_name: oracleName,
+    fully_verified: isFullyVerified
   })
+})
+
+/**
+ * verify-birth-issue - Verify Oracle birth via GitHub issue
+ * User provides birth issue URL, signs message in browser
+ * Backend fetches issue to verify wallet is mentioned
+ */
+app.post('/verify-birth-issue', async (c) => {
+  const { wallet, issueUrl, signature, message } = await c.req.json<{
+    wallet: `0x${string}`
+    issueUrl: string
+    signature: `0x${string}`
+    message: string
+  }>()
+
+  if (!wallet || !issueUrl || !signature || !message) {
+    return c.json({ success: false, error: 'wallet, issueUrl, signature, and message required' }, 400)
+  }
+
+  // 1. Verify signature
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${wallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // 2. Parse issue URL
+  // Format: https://github.com/owner/repo/issues/123
+  const issueMatch = issueUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+  if (!issueMatch) {
+    return c.json({ success: false, error: 'Invalid GitHub issue URL format' }, 400)
+  }
+  const [, owner, repo, issueNumber] = issueMatch
+
+  // 3. Fetch issue from GitHub API
+  let issue: any
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+      headers: { 'User-Agent': 'OracleNet-Siwer' }
+    })
+    if (!res.ok) throw new Error(`Issue fetch failed: ${res.status}`)
+    issue = await res.json()
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Failed to fetch issue: ' + e.message }, 400)
+  }
+
+  // 4. Verify issue contains wallet address (in title or body)
+  const issueContent = `${issue.title || ''} ${issue.body || ''}`.toLowerCase()
+  if (!issueContent.includes(wallet.toLowerCase())) {
+    return c.json({
+      success: false,
+      error: 'Birth issue does not contain your wallet address'
+    }, 400)
+  }
+
+  // 5. Extract birth issue number
+  const birthIssueNumber = parseInt(issueNumber)
+
+  // 6. Update Oracle in PocketBase with birth_issue
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+  let oracleUpdated = false
+  let isFullyVerified = false
+
+  try {
+    // Find oracle by wallet
+    const oracle = await pb.collection('oracles').getFirstListItem(
+      `wallet_address = "${wallet.toLowerCase()}"`
+    )
+
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+
+    // Check if github_username exists - if so, this completes verification
+    const hasGithubUsername = !!oracle.github_username
+    isFullyVerified = hasGithubUsername  // Both birth_issue (just verified) and github_username present
+
+    await pb.collection('oracles').update(oracle.id, {
+      birth_issue: birthIssueNumber,
+      ...(isFullyVerified ? { approved: true } : {})
+    })
+    oracleUpdated = true
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Oracle not found. Connect wallet first.' }, 404)
+  }
+
+  return c.json({
+    success: true,
+    birth_issue: birthIssueNumber,
+    wallet: wallet.toLowerCase(),
+    oracle_updated: oracleUpdated,
+    fully_verified: isFullyVerified
+  })
+})
+
+// ============================================
+// NEW: Single-Step Identity Verification
+// ============================================
+
+/**
+ * verify-identity - Single-step verification (GitHub + Birth Issue)
+ * User creates verification issue on GitHub, provides birth issue URL
+ * Backend verifies both in one call
+ */
+app.post('/verify-identity', async (c) => {
+  const { wallet, verificationIssueUrl, birthIssueUrl, signature, message } = await c.req.json<{
+    wallet: `0x${string}`
+    verificationIssueUrl: string
+    birthIssueUrl: string
+    signature: `0x${string}`
+    message: string
+  }>()
+
+  if (!wallet || !verificationIssueUrl || !birthIssueUrl || !signature || !message) {
+    return c.json({ success: false, error: 'wallet, verificationIssueUrl, birthIssueUrl, signature, and message required' }, 400)
+  }
+
+  // 1. Verify signature
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({ message, signature })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return c.json({
+      success: false,
+      error: `Signature mismatch: expected ${wallet}, got ${recovered}`
+    }, 400)
+  }
+
+  // 2. Parse verification issue URL → get GitHub username
+  const verifyMatch = verificationIssueUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+  if (!verifyMatch) {
+    return c.json({ success: false, error: 'Invalid verification issue URL format' }, 400)
+  }
+  const [, verifyOwner, verifyRepo, verifyIssueNumber] = verifyMatch
+
+  let verifyIssue: any
+  try {
+    const res = await fetch(`https://api.github.com/repos/${verifyOwner}/${verifyRepo}/issues/${verifyIssueNumber}`, {
+      headers: { 'User-Agent': 'OracleNet-Siwer' }
+    })
+    if (!res.ok) throw new Error(`Verification issue fetch failed: ${res.status}`)
+    verifyIssue = await res.json()
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Failed to fetch verification issue: ' + e.message }, 400)
+  }
+
+  // Verify wallet is in the verification issue
+  const verifyBody = verifyIssue.body || ''
+  if (!verifyBody.toLowerCase().includes(wallet.toLowerCase())) {
+    return c.json({
+      success: false,
+      error: 'Verification issue does not contain your wallet address'
+    }, 400)
+  }
+
+  const githubUsername = verifyIssue.user?.login
+  if (!githubUsername) {
+    return c.json({ success: false, error: 'Could not determine verification issue author' }, 400)
+  }
+
+  // 3. Parse birth issue URL → verify wallet is mentioned
+  const birthMatch = birthIssueUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/)
+  if (!birthMatch) {
+    return c.json({ success: false, error: 'Invalid birth issue URL format' }, 400)
+  }
+  const [, birthOwner, birthRepo, birthIssueNumber] = birthMatch
+
+  let birthIssue: any
+  try {
+    const res = await fetch(`https://api.github.com/repos/${birthOwner}/${birthRepo}/issues/${birthIssueNumber}`, {
+      headers: { 'User-Agent': 'OracleNet-Siwer' }
+    })
+    if (!res.ok) throw new Error(`Birth issue fetch failed: ${res.status}`)
+    birthIssue = await res.json()
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Failed to fetch birth issue: ' + e.message }, 400)
+  }
+
+  // Verify wallet is in the birth issue (title or body)
+  const birthContent = `${birthIssue.title || ''} ${birthIssue.body || ''}`.toLowerCase()
+  if (!birthContent.includes(wallet.toLowerCase())) {
+    return c.json({
+      success: false,
+      error: 'Birth issue does not contain your wallet address'
+    }, 400)
+  }
+
+  const birthIssueNum = parseInt(birthIssueNumber)
+
+  // 4. Store GitHub verification (for legacy compatibility)
+  await c.env.NONCES.put(`verified:${wallet.toLowerCase()}`, JSON.stringify({
+    github_username: githubUsername,
+    verified_at: new Date().toISOString()
+  }))
+
+  // 5. Update Oracle in PocketBase with both github_username and birth_issue → approved
+  const pb = new PocketBase(c.env.POCKETBASE_URL)
+
+  try {
+    // Find oracle by wallet
+    const oracle = await pb.collection('oracles').getFirstListItem(
+      `wallet_address = "${wallet.toLowerCase()}"`
+    )
+
+    // Update with both values and set approved
+    const isGenericName = oracle.name?.startsWith('Oracle-')
+    await pb.collection('_superusers').authWithPassword(c.env.PB_ADMIN_EMAIL, c.env.PB_ADMIN_PASSWORD)
+
+    await pb.collection('oracles').update(oracle.id, {
+      github_username: githubUsername,
+      birth_issue: birthIssueNum,
+      approved: true,
+      ...(isGenericName ? { name: githubUsername } : {})
+    })
+
+    return c.json({
+      success: true,
+      github_username: githubUsername,
+      birth_issue: birthIssueNum,
+      wallet: wallet.toLowerCase(),
+      oracle_name: isGenericName ? githubUsername : oracle.name,
+      fully_verified: true
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Oracle not found. Connect wallet first.' }, 404)
+  }
 })
 
 // ============================================
