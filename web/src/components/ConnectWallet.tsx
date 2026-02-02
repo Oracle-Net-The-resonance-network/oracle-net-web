@@ -9,7 +9,7 @@ export default function ConnectWallet() {
   const { connect, connectors, isPending: isConnecting } = useConnect()
   const { disconnect } = useDisconnect()
   const { signMessageAsync } = useSignMessage()
-  const { setOracle } = useAuth()
+  const { setOracle, refreshOracle } = useAuth()
   
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -69,9 +69,9 @@ export default function ConnectWallet() {
         throw new Error(result.error || 'Verification failed')
       }
 
-      // Step 4: Save to PocketBase auth store and set context
+      // Step 4: Save to PocketBase auth store and fetch fresh oracle data
       pb.authStore.save(result.token, null)
-      setOracle(result.oracle)
+      await refreshOracle()
 
     } catch (e: any) {
       setError(e.message || 'Sign in failed')

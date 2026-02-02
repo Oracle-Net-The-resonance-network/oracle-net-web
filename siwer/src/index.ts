@@ -1,14 +1,22 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { verifyMessage, recoverMessageAddress } from 'viem'
+import { verifyMessage, recoverMessageAddress, keccak256, toBytes } from 'viem'
 import { StandardMerkleTree } from '@openzeppelin/merkle-tree'
 import PocketBase from 'pocketbase'
+
+const ADMIN_LOGIN_MESSAGE = 'OracleNet Admin Login'
+
+function derivePassword(signature: string): string {
+  const hash = keccak256(toBytes(signature))
+  return hash.slice(2, 34)
+}
 
 type Bindings = {
   NONCES: KVNamespace
   POCKETBASE_URL: string
   PB_ADMIN_EMAIL: string
   PB_ADMIN_PASSWORD: string
+  ADMIN_WALLETS?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -177,9 +185,19 @@ Timestamp: ${new Date(timestamp).toISOString()}`
     oracle: {
       id: oracle.id,
       name: oracle.name,
+      email: oracle.email,
+      bio: oracle.bio,
+      repo_url: oracle.repo_url,
+      human: oracle.human,
       wallet_address: oracle.wallet_address,
+      github_username: oracle.github_username,
+      github_id: oracle.github_id,
+      github_repo: oracle.github_repo,
+      birth_issue: oracle.birth_issue,
       approved: oracle.approved,
-      karma: oracle.karma
+      karma: oracle.karma,
+      created: oracle.created,
+      updated: oracle.updated
     },
     token
   })
@@ -1560,12 +1578,10 @@ app.post('/admin/cleanup', async (c) => {
     adminPassword: string
   }>()
 
-  // Verify admin credentials
   if (adminEmail !== c.env.PB_ADMIN_EMAIL || adminPassword !== c.env.PB_ADMIN_PASSWORD) {
     return c.json({ success: false, error: 'Invalid admin credentials' }, 403)
   }
 
-  // Delete verification
   await c.env.NONCES.delete(`verified:${wallet.toLowerCase()}`)
   await c.env.NONCES.delete(`bot:${wallet.toLowerCase()}`)
 
@@ -1573,6 +1589,361 @@ app.post('/admin/cleanup', async (c) => {
     success: true,
     deleted: wallet.toLowerCase()
   })
+})
+
+app.get('/admin-wallet', async (c) => {
+  const pbUrl = c.env.POCKETBASE_URL
+  const adminWallets = (c.env.ADMIN_WALLETS || '').toLowerCase().split(',').filter(Boolean)
+  
+  return c.html(`<!DOCTYPE html>
+<html>
+<head>
+  <title>OracleNet Admin - Wallet Login</title>
+  <script src="https://cdn.jsdelivr.net/npm/viem@2.23.0/dist/esm/index.min.js" type="module"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; min-height: 100vh; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #e4e4e7; display: flex; justify-content: center; align-items: center; }
+    .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 32px; max-width: 450px; width: 90%; backdrop-filter: blur(10px); text-align: center; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .subtitle { color: #a1a1aa; margin-bottom: 24px; }
+    button { padding: 16px 32px; background: #4f46e5; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s; width: 100%; }
+    button:hover { background: #4338ca; transform: translateY(-1px); }
+    button:disabled { background: #3f3f46; cursor: not-allowed; transform: none; }
+    .status { margin-top: 20px; padding: 12px; border-radius: 8px; font-size: 14px; }
+    .status.error { background: rgba(239,68,68,0.2); color: #fca5a5; }
+    .status.success { background: rgba(34,197,94,0.2); color: #86efac; }
+    .status.info { background: rgba(59,130,246,0.2); color: #93c5fd; }
+    .wallet { font-family: monospace; font-size: 12px; color: #a1a1aa; margin-top: 8px; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Admin Login</h1>
+    <p class="subtitle">Sign with your wallet to access PocketBase admin</p>
+    
+    <button id="connectBtn" onclick="connectAndSign()">Connect Wallet & Sign</button>
+    
+    <div id="status" class="status info" style="display:none;"></div>
+    <div id="wallet" class="wallet"></div>
+  </div>
+  
+  <script type="module">
+    const ADMIN_MESSAGE = '${ADMIN_LOGIN_MESSAGE}';
+    const SIWER_URL = window.location.origin;
+    const PB_URL = '${pbUrl}';
+    
+    window.connectAndSign = async function() {
+      const btn = document.getElementById('connectBtn');
+      const status = document.getElementById('status');
+      const walletDiv = document.getElementById('wallet');
+      
+      btn.disabled = true;
+      btn.textContent = 'Connecting...';
+      status.style.display = 'block';
+      status.className = 'status info';
+      status.textContent = 'Requesting wallet connection...';
+      
+      try {
+        if (!window.ethereum) {
+          throw new Error('No wallet found. Install MetaMask!');
+        }
+        
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        const address = accounts[0];
+        walletDiv.textContent = address;
+        
+        status.textContent = 'Please sign the message in your wallet...';
+        
+        const signature = await window.ethereum.request({
+          method: 'personal_sign',
+          params: [ADMIN_MESSAGE, address]
+        });
+        
+        status.textContent = 'Verifying signature...';
+        
+        const res = await fetch(SIWER_URL + '/admin-wallet-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, signature })
+        });
+        
+        const data = await res.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Verification failed');
+        }
+        
+        status.className = 'status success';
+        status.textContent = 'Success! Redirecting to admin...';
+        
+        localStorage.setItem('__pb_superuser_auth__', JSON.stringify({
+          token: data.token,
+          record: data.record
+        }));
+        
+        setTimeout(() => {
+          window.location.href = PB_URL + '/_/';
+        }, 500);
+        
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = e.message;
+        btn.disabled = false;
+        btn.textContent = 'Connect Wallet & Sign';
+      }
+    }
+  </script>
+</body>
+</html>`)
+})
+
+app.post('/admin-wallet-verify', async (c) => {
+  const { address, signature } = await c.req.json<{
+    address: `0x${string}`
+    signature: `0x${string}`
+  }>()
+  
+  if (!address || !signature) {
+    return c.json({ success: false, error: 'address and signature required' }, 400)
+  }
+  
+  const adminWallets = (c.env.ADMIN_WALLETS || '').toLowerCase().split(',').filter(Boolean)
+  
+  if (adminWallets.length > 0 && !adminWallets.includes(address.toLowerCase())) {
+    return c.json({ success: false, error: 'Wallet not authorized as admin' }, 403)
+  }
+  
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({
+      message: ADMIN_LOGIN_MESSAGE,
+      signature
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed: ' + e.message }, 400)
+  }
+  
+  if (recovered.toLowerCase() !== address.toLowerCase()) {
+    return c.json({ success: false, error: 'Invalid signature' }, 400)
+  }
+  
+  const derivedPassword = derivePassword(signature)
+  const pbUrl = c.env.POCKETBASE_URL
+  const adminEmail = c.env.PB_ADMIN_EMAIL
+  
+  try {
+    const res = await fetch(`${pbUrl}/api/collections/_superusers/auth-with-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: adminEmail, password: derivedPassword })
+    })
+    
+    const data = await res.json() as { token?: string; record?: any; message?: string }
+    
+    if (data.token) {
+      return c.json({
+        success: true,
+        token: data.token,
+        record: data.record
+      })
+    }
+    
+    return c.json({ 
+      success: false, 
+      error: 'Auth failed. Password may need to be set. Derived: ' + derivedPassword.slice(0, 8) + '...',
+      derivedPassword
+    }, 401)
+    
+  } catch (e: any) {
+    return c.json({ success: false, error: 'PocketBase error: ' + e.message }, 500)
+  }
+})
+
+app.post('/admin-wallet-setup', async (c) => {
+  const { address, signature, currentPassword } = await c.req.json<{
+    address: `0x${string}`
+    signature: `0x${string}`
+    currentPassword: string
+  }>()
+  
+  if (!address || !signature || !currentPassword) {
+    return c.json({ success: false, error: 'address, signature, and currentPassword required' }, 400)
+  }
+  
+  let recovered: string
+  try {
+    recovered = await recoverMessageAddress({
+      message: ADMIN_LOGIN_MESSAGE,
+      signature
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Signature recovery failed' }, 400)
+  }
+  
+  if (recovered.toLowerCase() !== address.toLowerCase()) {
+    return c.json({ success: false, error: 'Invalid signature' }, 400)
+  }
+  
+  const derivedPassword = derivePassword(signature)
+  const pbUrl = c.env.POCKETBASE_URL
+  const adminEmail = c.env.PB_ADMIN_EMAIL
+  
+  const pb = new PocketBase(pbUrl)
+  
+  try {
+    await pb.collection('_superusers').authWithPassword(adminEmail, currentPassword)
+    
+    const superuser = await pb.collection('_superusers').getFirstListItem(`email = "${adminEmail}"`)
+    
+    await pb.collection('_superusers').update(superuser.id, {
+      password: derivedPassword,
+      passwordConfirm: derivedPassword
+    })
+    
+    return c.json({
+      success: true,
+      message: 'Admin password updated to wallet-derived password',
+      wallet: address.toLowerCase()
+    })
+    
+  } catch (e: any) {
+    return c.json({ success: false, error: 'Setup failed: ' + e.message }, 500)
+  }
+})
+
+app.get('/admin-login', async (c) => {
+  const pbUrl = c.env.POCKETBASE_URL
+  const email = c.env.PB_ADMIN_EMAIL
+  const password = c.env.PB_ADMIN_PASSWORD
+  
+  try {
+    const res = await fetch(`${pbUrl}/api/collections/_superusers/auth-with-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: email, password: password })
+    })
+    
+    const data = await res.json() as { token?: string; record?: any; message?: string }
+    
+    if (!data.token) {
+      return c.html(`<h1>Auth Failed</h1><p>${data.message || 'Unknown error'}</p>`)
+    }
+    
+    const authData = { token: data.token, record: data.record }
+    const authJson = JSON.stringify(authData)
+    const authB64 = btoa(authJson)
+    
+    return c.html(`<!DOCTYPE html>
+<html>
+<head>
+  <title>OracleNet Admin</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; min-height: 100vh; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #e4e4e7; display: flex; justify-content: center; align-items: center; }
+    .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 32px; max-width: 500px; width: 90%; backdrop-filter: blur(10px); }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .subtitle { color: #a1a1aa; margin-bottom: 24px; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-size: 12px; color: #a1a1aa; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .input-group { display: flex; gap: 8px; }
+    input { flex: 1; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: white; font-family: monospace; font-size: 14px; }
+    button { padding: 12px 20px; background: #4f46e5; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+    button:hover { background: #4338ca; transform: translateY(-1px); }
+    .copy-btn { background: #27272a; }
+    .copy-btn:hover { background: #3f3f46; }
+    .copy-btn.copied { background: #16a34a; }
+    .open-btn { width: 100%; margin-top: 24px; padding: 16px; font-size: 16px; }
+    .divider { display: flex; align-items: center; gap: 16px; margin: 24px 0; color: #71717a; font-size: 12px; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.1); }
+    .auto-section { text-align: center; }
+    .auto-section p { color: #a1a1aa; font-size: 14px; margin-bottom: 16px; }
+    code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>PocketBase Admin</h1>
+    <p class="subtitle">Logged in as ${data.record?.email}</p>
+    
+    <div class="field">
+      <label>Email</label>
+      <div class="input-group">
+        <input type="text" id="email" value="${email}" readonly>
+        <button class="copy-btn" onclick="copyField('email', this)">Copy</button>
+      </div>
+    </div>
+    
+    <div class="field">
+      <label>Password</label>
+      <div class="input-group">
+        <input type="password" id="password" value="${password}" readonly>
+        <button class="copy-btn" onclick="copyField('password', this)">Copy</button>
+      </div>
+    </div>
+    
+    <a href="${pbUrl}/_/#/login" target="_blank" style="text-decoration: none;">
+      <button class="open-btn">Open Admin Panel &rarr;</button>
+    </a>
+    
+    <div class="divider">OR ONE-CLICK LOGIN</div>
+    
+    <div class="auto-section">
+      <p>Click to open PocketBase and auto-login:</p>
+      <button onclick="autoLogin()" style="padding: 16px 32px; background: #16a34a; border: none; border-radius: 8px; color: white; font-size: 16px; font-weight: 600; cursor: pointer;">
+        Auto-Login to Admin
+      </button>
+      <p style="margin-top: 16px; font-size: 12px; color: #71717a;">Opens PocketBase in new tab and logs you in</p>
+    </div>
+  </div>
+  
+  <script>
+    function copyField(id, btn) {
+      const input = document.getElementById(id);
+      if (id === 'password') input.type = 'text';
+      input.select();
+      document.execCommand('copy');
+      if (id === 'password') input.type = 'password';
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    }
+    
+    function autoLogin() {
+      const authData = '${authB64}';
+      const pbUrl = '${pbUrl}';
+      
+      const html = \`<!DOCTYPE html>
+<html>
+<head><title>Logging in...</title></head>
+<body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a2e;color:white;">
+<div style="text-align:center;">
+<p>Setting up auth...</p>
+<script>
+try {
+  const auth = JSON.parse(atob('\${authData}'));
+  localStorage.setItem('__pb_superuser_auth__', JSON.stringify(auth));
+  window.location.href = '\${pbUrl}/_/';
+} catch(e) {
+  document.body.innerHTML = '<h2>Failed</h2><p>'+e.message+'</p>';
+}
+<\\/script>
+</div>
+</body>
+</html>\`;
+      
+      const blob = new Blob([html], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    }
+  </script>
+</body>
+</html>`)
+  } catch (e: any) {
+    return c.html(`<h1>Error</h1><p>${e.message}</p>`, 500)
+  }
 })
 
 export default app

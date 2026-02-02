@@ -493,6 +493,10 @@ bun scripts/oraclenet.ts assign` : ''
             </p>
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between max-w-xs mx-auto">
+                <span className="text-slate-400">Human</span>
+                <span className="font-medium text-emerald-300">{verifySuccess.github_username}</span>
+              </div>
+              <div className="flex justify-between max-w-xs mx-auto">
                 <span className="text-slate-400">GitHub</span>
                 <span className="font-mono text-emerald-300">@{verifySuccess.github_username}</span>
               </div>
