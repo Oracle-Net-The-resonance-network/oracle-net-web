@@ -362,7 +362,17 @@ ${getSignedBody()}
       if (!data.success) {
         let errorMsg = data.error || 'Verification failed'
         if (data.debug) {
-          errorMsg += `\n\nLooking for: ${data.debug.looking_for}\nIssue title: ${data.debug.issue_title}\nIssue author: ${data.debug.issue_author}\nBody preview: ${data.debug.issue_body_preview?.slice(0, 200)}...`
+          // Handle different debug formats
+          if (data.debug.verification_author && data.debug.birth_author) {
+            // GitHub user mismatch error
+            errorMsg += `\n\nYour GitHub: ${data.debug.verification_author}\nBirth issue author: ${data.debug.birth_author}`
+          } else if (data.debug.looking_for) {
+            // Wallet address mismatch error
+            errorMsg += `\n\nLooking for: ${data.debug.looking_for}\nIssue title: ${data.debug.issue_title}\nIssue author: ${data.debug.issue_author}\nBody preview: ${data.debug.issue_body_preview?.slice(0, 200)}...`
+          } else {
+            // Generic debug info
+            errorMsg += `\n\nDebug: ${JSON.stringify(data.debug, null, 2)}`
+          }
         }
         setVerifyError(errorMsg)
       } else {
