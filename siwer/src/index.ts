@@ -1048,7 +1048,13 @@ app.post('/verify-identity', async (c) => {
   if (!verifyBody.toLowerCase().includes(wallet.toLowerCase())) {
     return c.json({
       success: false,
-      error: 'Verification issue does not contain your wallet address'
+      error: 'Verification issue does not contain your wallet address',
+      debug: {
+        looking_for: wallet.toLowerCase(),
+        issue_title: verifyIssue.title || '(no title)',
+        issue_body_preview: (verifyIssue.body || '(no body)').slice(0, 500),
+        issue_author: verifyIssue.user?.login || '(unknown)'
+      }
     }, 400)
   }
 
@@ -1080,7 +1086,13 @@ app.post('/verify-identity', async (c) => {
   if (!birthContent.includes(wallet.toLowerCase())) {
     return c.json({
       success: false,
-      error: 'Birth issue does not contain your wallet address'
+      error: 'Birth issue does not contain your wallet address',
+      debug: {
+        looking_for: wallet.toLowerCase(),
+        issue_title: birthIssue.title || '(no title)',
+        issue_body_preview: (birthIssue.body || '(no body)').slice(0, 500),
+        issue_author: birthIssue.user?.login || '(unknown)'
+      }
     }, 400)
   }
 

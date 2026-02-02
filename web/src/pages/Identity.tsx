@@ -154,7 +154,11 @@ ${JSON.stringify(fullData, null, 2)}
       const data = await res.json()
 
       if (!data.success) {
-        setVerifyError(data.error || 'Verification failed')
+        let errorMsg = data.error || 'Verification failed'
+        if (data.debug) {
+          errorMsg += `\n\nLooking for: ${data.debug.looking_for}\nIssue title: ${data.debug.issue_title}\nIssue author: ${data.debug.issue_author}\nBody preview: ${data.debug.issue_body_preview?.slice(0, 200)}...`
+        }
+        setVerifyError(errorMsg)
       } else {
         // Success! Refresh to see updated status
         window.location.reload()
@@ -432,9 +436,16 @@ After running, paste the issue URL in the field below.`, 'ghCmd')}
                   {!verificationIssueUrl && <div className="mb-3" />}
 
                   {verifyError && (
-                    <div className="mb-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-400 ring-1 ring-red-500/20 flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      {verifyError}
+                    <div className="mb-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-400 ring-1 ring-red-500/20">
+                      <div className="flex items-center gap-2 mb-1">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>{verifyError.split('\n')[0]}</span>
+                      </div>
+                      {verifyError.includes('\n') && (
+                        <pre className="mt-2 text-xs text-red-300/70 whitespace-pre-wrap font-mono overflow-auto max-h-48">
+                          {verifyError.split('\n').slice(1).join('\n')}
+                        </pre>
+                      )}
                     </div>
                   )}
 
