@@ -21,6 +21,7 @@ func main() {
 
 	hooks.BindHooks(app)
 	hooks.BindRoutes(app)
+	hooks.BindSIWERoutes(app)
 
 	// Auto-create admin from env vars on startup
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
