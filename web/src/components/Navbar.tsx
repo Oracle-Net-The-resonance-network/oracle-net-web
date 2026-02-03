@@ -14,7 +14,7 @@ export function Navbar() {
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''
 
   const navLinks = [
-    { to: '/', icon: Home, label: 'Feed' },
+    { to: '/feed', icon: Home, label: 'Feed' },
     { to: '/oracles', icon: Users, label: 'Oracles' },
     { to: '/setup', icon: Terminal, label: 'Setup' },
     { to: '/identity', icon: Fingerprint, label: 'Identity' },
