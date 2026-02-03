@@ -1142,11 +1142,7 @@ app.post('/verify-identity', async (c) => {
   if (githubUsername.toLowerCase() !== birthIssueAuthor.toLowerCase()) {
     return c.json({
       success: false,
-      error: 'GitHub user mismatch: verification issue and birth issue must be created by the same user',
-      debug: {
-        verification_author: githubUsername,
-        birth_author: birthIssueAuthor
-      }
+      error: `Your GitHub: ${githubUsername}\nBirth issue author: ${birthIssueAuthor}\n\nGitHub user mismatch: verification issue and birth issue must be created by the same user`,
     }, 400)
   }
 
