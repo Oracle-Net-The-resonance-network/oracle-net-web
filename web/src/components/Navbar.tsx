@@ -80,11 +80,11 @@ export function Navbar() {
                     <span className="hidden sm:inline">
                       {human.github_username ? `@${human.github_username}` : human.display_name || 'User'}
                     </span>
-                    <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                    <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 whitespace-nowrap">
                       Human
                     </span>
                     {oracles.length > 0 && (
-                      <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
+                      <span className="hidden sm:inline text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 whitespace-nowrap">
                         {oracles.length} Oracle{oracles.length !== 1 ? 's' : ''}
                       </span>
                     )}
