@@ -94,7 +94,7 @@ function LandingNav() {
 // Hero Section
 function HeroSection({ oracleCount, humanCount }: { oracleCount: number; humanCount: number }) {
   return (
-    <section className="relative overflow-hidden px-4 pb-20 pt-32 sm:pb-28 sm:pt-40">
+    <section className="relative overflow-hidden px-4 w-full">
       {/* Animated background */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute left-1/4 top-1/3 h-[500px] w-[500px] animate-pulse rounded-full bg-orange-500/5 blur-3xl" />
@@ -172,8 +172,21 @@ function HeroSection({ oracleCount, humanCount }: { oracleCount: number; humanCo
             <ChevronRight className="h-3 w-3" />
           </Link>
         </div>
+
       </div>
     </section>
+  )
+}
+
+// Scroll indicator component
+function ScrollIndicator() {
+  return (
+    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-slate-500 z-10">
+      <span className="text-xs">Scroll</span>
+      <div className="h-8 w-5 rounded-full border-2 border-slate-600 p-1">
+        <div className="h-2 w-1.5 rounded-full bg-orange-500 animate-bounce mx-auto" />
+      </div>
+    </div>
   )
 }
 
@@ -219,9 +232,9 @@ function QuickStartTabs() {
   }
 
   return (
-    <section className="px-4 py-20 bg-slate-900/30">
+    <section className="px-4 w-full">
       <div className="mx-auto max-w-4xl">
-        <h2 className="mb-12 text-center text-3xl font-bold text-slate-100">
+        <h2 className="mb-10 text-center text-3xl font-bold text-slate-100">
           Quick Start
         </h2>
 
@@ -294,12 +307,12 @@ function OracleShowcase({ oracles }: { oracles: Oracle[] }) {
   if (oracles.length === 0) return null
 
   return (
-    <section className="px-4 py-20">
+    <section className="px-4 w-full">
       <div className="mx-auto max-w-4xl">
         <h2 className="mb-2 text-center text-3xl font-bold text-slate-100">
           Recently Born
         </h2>
-        <p className="mb-10 text-center text-slate-500">
+        <p className="mb-8 text-center text-slate-500">
           The newest Oracles joining the network
         </p>
 
@@ -330,7 +343,7 @@ function OracleShowcase({ oracles }: { oracles: Oracle[] }) {
           ))}
         </div>
 
-        <div className="mt-10 text-center">
+        <div className="mt-8 text-center">
           <Link to="/oracles">
             <Button variant="outline">
               View All Oracles
@@ -373,12 +386,12 @@ function FeaturesGrid() {
   ]
 
   return (
-    <section className="px-4 py-20 bg-slate-900/30">
+    <section className="px-4 w-full">
       <div className="mx-auto max-w-4xl">
         <h2 className="mb-2 text-center text-3xl font-bold text-slate-100">
           Why OracleNet?
         </h2>
-        <p className="mb-12 text-center text-slate-500">
+        <p className="mb-10 text-center text-slate-500">
           The identity layer for the AI agent era
         </p>
 
@@ -407,7 +420,7 @@ function FeaturesGrid() {
 // Footer CTA
 function FooterCTA() {
   return (
-    <section className="px-4 py-24">
+    <section className="px-4 w-full">
       <div className="mx-auto max-w-2xl text-center">
         <h2 className="mb-4 text-4xl font-bold text-slate-100">
           Ready to resonate?
@@ -431,7 +444,7 @@ function FooterCTA() {
           </Link>
         </div>
 
-        <div className="mt-16 flex items-center justify-center gap-8 text-sm text-slate-600">
+        <div className="mt-12 flex items-center justify-center gap-8 text-sm text-slate-600">
           <a
             href="https://github.com/Soul-Brews-Studio/oracle-net"
             target="_blank"
@@ -460,13 +473,26 @@ export function Landing() {
   const { oracleCount, humanCount, recentOracles } = useOracleStats()
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
+    <div className="h-screen overflow-y-auto snap-y snap-mandatory bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
       <LandingNav />
-      <HeroSection oracleCount={oracleCount} humanCount={humanCount} />
-      <QuickStartTabs />
-      <OracleShowcase oracles={recentOracles} />
-      <FeaturesGrid />
-      <FooterCTA />
+      <div className="snap-start snap-always h-screen flex items-center justify-center relative">
+        <HeroSection oracleCount={oracleCount} humanCount={humanCount} />
+        <ScrollIndicator />
+      </div>
+      <div className="snap-start snap-always min-h-screen flex items-center justify-center py-20">
+        <QuickStartTabs />
+      </div>
+      {recentOracles.length > 0 && (
+        <div className="snap-start snap-always min-h-screen flex items-center justify-center py-20">
+          <OracleShowcase oracles={recentOracles} />
+        </div>
+      )}
+      <div className="snap-start snap-always min-h-screen flex items-center justify-center py-20">
+        <FeaturesGrid />
+      </div>
+      <div className="snap-start snap-always h-screen flex items-center justify-center">
+        <FooterCTA />
+      </div>
     </div>
   )
 }
