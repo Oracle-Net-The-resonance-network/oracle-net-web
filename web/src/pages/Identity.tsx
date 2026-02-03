@@ -130,6 +130,14 @@ export function Identity() {
     return null
   }
 
+  // Format birth issue title for display (without emojis, just Oracle name)
+  const formatBirthIssueTitle = (title: string): string => {
+    const extracted = extractOracleName(title)
+    if (extracted) return extracted
+    // Fallback: just remove emojis
+    return title.replace(/[\p{Emoji}]/gu, '').trim()
+  }
+
   // Fetch birth issue when URL changes
   useEffect(() => {
     const fetchBirthIssue = async () => {
@@ -615,7 +623,7 @@ bun scripts/oraclenet.ts assign` : ''
                             rel="noopener noreferrer"
                             className="text-slate-400 hover:text-orange-300 transition-colors"
                           >
-                            {birthIssueData.title}
+                            {formatBirthIssueTitle(birthIssueData.title)}
                           </a>
                           <span className="mx-1">by</span>
                           <a
