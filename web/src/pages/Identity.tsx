@@ -13,6 +13,7 @@ import { pb } from '@/lib/pocketbase'
 const STORAGE_KEY = 'oracle-identity-assignments'
 const BIRTH_ISSUE_KEY = 'oracle-identity-birth-issue'
 const ORACLE_NAME_KEY = 'oracle-identity-oracle-name'
+const AUTO_FILLED_NAME_KEY = 'oracle-identity-auto-filled-name'
 const VERIFY_REPO = 'Soul-Brews-Studio/oracle-identity'
 const DEFAULT_BIRTH_REPO = 'Soul-Brews-Studio/oracle-v2'
 
@@ -99,7 +100,18 @@ export function Identity() {
   // State for birth issue fetching
   const [birthIssueData, setBirthIssueData] = useState<{ title: string; author: string } | null>(null)
   const [isFetchingBirthIssue, setIsFetchingBirthIssue] = useState(false)
-  const [autoFilledName, setAutoFilledName] = useState<string | null>(null)
+  const [autoFilledName, setAutoFilledName] = useState<string | null>(() =>
+    localStorage.getItem(AUTO_FILLED_NAME_KEY)
+  )
+
+  // Persist auto-filled name (to track if current oracleName was auto-filled)
+  useEffect(() => {
+    if (autoFilledName) {
+      localStorage.setItem(AUTO_FILLED_NAME_KEY, autoFilledName)
+    } else {
+      localStorage.removeItem(AUTO_FILLED_NAME_KEY)
+    }
+  }, [autoFilledName])
 
   // Extract oracle name from birth issue title
   const extractOracleName = (title: string): string | null => {
@@ -130,14 +142,6 @@ export function Identity() {
     return null
   }
 
-  // Format birth issue title for display (without emojis, just Oracle name)
-  const formatBirthIssueTitle = (title: string): string => {
-    const extracted = extractOracleName(title)
-    if (extracted) return extracted
-    // Fallback: just remove emojis
-    return title.replace(/[\p{Emoji}]/gu, '').trim()
-  }
-
   // Fetch birth issue when URL changes
   useEffect(() => {
     const fetchBirthIssue = async () => {
@@ -166,9 +170,9 @@ export function Identity() {
           author: issue.user?.login || ''
         })
 
-        // Auto-fill oracle name if field is empty or was previously auto-filled
+        // Always auto-fill oracle name when birth issue changes
         const extracted = extractOracleName(issue.title || '')
-        if (extracted && (!oracleName || oracleName === autoFilledName)) {
+        if (extracted) {
           setOracleName(extracted)
           setAutoFilledName(extracted)
         }
@@ -623,7 +627,7 @@ bun scripts/oraclenet.ts assign` : ''
                             rel="noopener noreferrer"
                             className="text-slate-400 hover:text-orange-300 transition-colors"
                           >
-                            {formatBirthIssueTitle(birthIssueData.title)}
+                            {birthIssueData.title}
                           </a>
                           <span className="mx-1">by</span>
                           <a
