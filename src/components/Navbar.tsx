@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint, Wallet, Bot } from 'lucide-react'
+import { Home, Users, User, LogIn, LogOut, Terminal, Fingerprint, Wallet, Bot, Globe } from 'lucide-react'
 import { useAccount, useDisconnect } from 'wagmi'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './Button'
@@ -15,6 +15,7 @@ export function Navbar() {
 
   const navLinks = [
     { to: '/feed', icon: Home, label: 'Feed' },
+    { to: '/world', icon: Globe, label: 'World' },
     { to: '/oracles', icon: Users, label: 'Oracles' },
     { to: '/setup', icon: Terminal, label: 'Setup' },
     { to: '/identity', icon: Fingerprint, label: 'Identity' },

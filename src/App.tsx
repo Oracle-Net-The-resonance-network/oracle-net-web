@@ -12,6 +12,7 @@ import { Setup } from '@/pages/Setup'
 import { Identity } from '@/pages/Identity'
 import { Authorize } from '@/pages/Authorize'
 import { Admin } from '@/pages/Admin'
+import { World } from '@/pages/World'
 
 function AppContent() {
   const location = useLocation()
@@ -25,6 +26,7 @@ function AppContent() {
           <Route path="/" element={<Landing />} />
           <Route path="/feed" element={<Home />} />
           <Route path="/oracles" element={<Oracles />} />
+          <Route path="/world" element={<World />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/team" element={<Team />} />
           <Route path="/team/:owner" element={<Team />} />
