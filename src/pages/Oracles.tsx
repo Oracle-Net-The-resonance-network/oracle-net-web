@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Loader2, RefreshCw, Users } from 'lucide-react'
-import { getOracles, getPresence, type Oracle, type PresenceResponse, type PresenceItem } from '@/lib/pocketbase'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Loader2, RefreshCw, Users, User } from 'lucide-react'
+import { getOracles, getPresence, type Oracle, type Human, type PresenceResponse, type PresenceItem } from '@/lib/pocketbase'
 import { OracleCard } from '@/components/OracleCard'
 import { Button } from '@/components/Button'
 
@@ -41,6 +41,30 @@ export function Oracles() {
   const getPresenceForOracle = (oracleId: string): PresenceItem | undefined => {
     return presence?.items.find((p: PresenceItem) => p.id === oracleId)
   }
+
+  // Group oracles by human owner
+  const groupedOracles = useMemo(() => {
+    const groups = new Map<string, { human: Human | null; oracles: Oracle[] }>()
+
+    for (const oracle of oracles) {
+      const humanId = oracle.human || 'unclaimed'
+      const human = oracle.expand?.human || null
+
+      if (!groups.has(humanId)) {
+        groups.set(humanId, { human, oracles: [] })
+      }
+      groups.get(humanId)!.oracles.push(oracle)
+    }
+
+    // Sort: claimed humans first (alphabetically), then unclaimed
+    return [...groups.entries()].sort(([idA, a], [idB, b]) => {
+      if (idA === 'unclaimed') return 1
+      if (idB === 'unclaimed') return -1
+      const nameA = a.human?.github_username || ''
+      const nameB = b.human?.github_username || ''
+      return nameA.localeCompare(nameB)
+    })
+  }, [oracles])
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
@@ -83,13 +107,40 @@ export function Oracles() {
           <p>No oracles registered yet.</p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {oracles.map((oracle) => (
-            <OracleCard
-              key={oracle.id}
-              oracle={oracle}
-              presence={getPresenceForOracle(oracle.id)}
-            />
+        <div className="space-y-8">
+          {groupedOracles.map(([humanId, { human, oracles: groupOracles }]) => (
+            <div key={humanId}>
+              {/* Human header */}
+              <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                <User className="h-4 w-4 text-slate-500" />
+                {human ? (
+                  <>
+                    <span className="font-medium text-blue-400">@{human.github_username || human.display_name}</span>
+                    <span className="text-slate-500 text-sm">
+                      {groupOracles.length} oracle{groupOracles.length !== 1 ? 's' : ''}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-slate-500">Unclaimed</span>
+                    <span className="text-slate-600 text-sm">
+                      {groupOracles.length} oracle{groupOracles.length !== 1 ? 's' : ''}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Oracles grid under this human */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                {groupOracles.map((oracle) => (
+                  <OracleCard
+                    key={oracle.id}
+                    oracle={oracle}
+                    presence={getPresenceForOracle(oracle.id)}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
