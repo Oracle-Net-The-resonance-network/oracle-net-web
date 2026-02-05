@@ -4,8 +4,8 @@ import { useAccount, useConnect, useSignMessage } from 'wagmi'
 import { Loader2, CheckCircle, Copy, Check, ShieldCheck, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/Button'
 
-// SIWER service for bot authorization (separate from main API)
-const SIWER_URL = import.meta.env.VITE_SIWER_URL || 'https://siwer.larisara.workers.dev'
+// Oracle Universe API for bot authorization
+const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
 
 type AuthRequest = {
   status: 'pending' | 'authorized' | 'claimed'
@@ -50,7 +50,7 @@ export function Authorize() {
       }
 
       try {
-        const res = await fetch(`${SIWER_URL}/auth-request/${reqId}`)
+        const res = await fetch(`${API_URL}/api/auth-request/${reqId}`)
         const data = await res.json()
 
         if (!data.success) {
@@ -94,7 +94,7 @@ Request: ${reqId}`
       const signature = await signMessageAsync({ message })
 
       // Submit to backend
-      const res = await fetch(`${SIWER_URL}/authorize`, {
+      const res = await fetch(`${API_URL}/api/authorize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

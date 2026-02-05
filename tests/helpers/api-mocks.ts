@@ -1,7 +1,7 @@
 /**
  * API Mocking Helpers for E2E Tests
  *
- * Mock GitHub API and SIWER endpoints to:
+ * Mock Oracle Universe API endpoints to:
  * - Avoid rate limits
  * - Test edge cases (errors, timeouts)
  * - Make tests deterministic
@@ -10,24 +10,24 @@
 import type { Page, Route } from '@playwright/test'
 
 // ============================================
-// GitHub API Mocks
+// GitHub API Mocks (via Oracle Universe API proxy)
 // ============================================
 
 export interface GitHubIssueMock {
   number: number
   title: string
   body: string
-  user: { login: string }
+  author: string
   state: 'open' | 'closed'
 }
 
 /**
- * Mock GitHub Issues API
+ * Mock GitHub Issues API (via Oracle Universe API proxy)
  */
 export async function mockGitHubIssues(page: Page, issues: Record<string, GitHubIssueMock>) {
-  await page.route('**/api.github.com/repos/*/issues/*', async (route: Route) => {
+  await page.route('**/api/github/issues/*/*/**', async (route: Route) => {
     const url = route.request().url()
-    const match = url.match(/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)/)
+    const match = url.match(/api\/github\/issues\/([^/]+)\/([^/]+)\/(\d+)/)
 
     if (match) {
       const [, owner, repo, issueNum] = match
@@ -46,7 +46,7 @@ export async function mockGitHubIssues(page: Page, issues: Record<string, GitHub
         await route.fulfill({
           status: 404,
           contentType: 'application/json',
-          body: JSON.stringify({ message: 'Not Found' }),
+          body: JSON.stringify({ error: 'Not Found' }),
         })
       }
     } else {
@@ -64,7 +64,7 @@ export const TEST_ISSUES: Record<string, GitHubIssueMock> = {
     number: 121,
     title: 'SHRIMP Oracle Awakens',
     body: 'Oracle birth announcement',
-    user: { login: 'nazt' },
+    author: 'nazt',
     state: 'open',
   },
   // Verification issue (test wallet)
@@ -72,7 +72,7 @@ export const TEST_ISSUES: Record<string, GitHubIssueMock> = {
     number: 999,
     title: 'Verify: Test Wallet',
     body: 'wallet: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-    user: { login: 'test-user' },
+    author: 'test-user',
     state: 'open',
   },
   // Verification issue in oracle-identity repo
@@ -80,13 +80,13 @@ export const TEST_ISSUES: Record<string, GitHubIssueMock> = {
     number: 999,
     title: 'Verify: Test Wallet',
     body: 'wallet: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
-    user: { login: 'test-user' },
+    author: 'test-user',
     state: 'open',
   },
 }
 
 // ============================================
-// SIWER API Mocks
+// Verify Identity API Mocks
 // ============================================
 
 export interface VerifyIdentityResponse {
@@ -100,13 +100,13 @@ export interface VerifyIdentityResponse {
 }
 
 /**
- * Mock SIWER verify-identity endpoint
+ * Mock verify-identity endpoint (via Oracle Universe API)
  */
-export async function mockSiwerVerifyIdentity(
+export async function mockVerifyIdentity(
   page: Page,
   response: VerifyIdentityResponse | ((body: any) => VerifyIdentityResponse)
 ) {
-  await page.route('**/siwer.larisara.workers.dev/verify-identity', async (route: Route) => {
+  await page.route('**/api/auth/verify-identity', async (route: Route) => {
     const request = route.request()
 
     if (request.method() === 'POST') {
@@ -119,7 +119,7 @@ export async function mockSiwerVerifyIdentity(
         responseData = response
       }
 
-      console.log('[Mock] SIWER verify-identity:', responseData.success ? 'SUCCESS' : 'ERROR')
+      console.log('[Mock] verify-identity:', responseData.success ? 'SUCCESS' : 'ERROR')
 
       await route.fulfill({
         status: responseData.success ? 200 : 400,
@@ -136,11 +136,10 @@ export async function mockSiwerVerifyIdentity(
  * Mock successful verification
  */
 export function mockSuccessfulVerification(page: Page, oracleName: string = 'Test Oracle') {
-  return mockSiwerVerifyIdentity(page, {
+  return mockVerifyIdentity(page, {
     success: true,
     github_username: 'test-user',
     oracle_name: oracleName,
-    fully_verified: true,
     oracle: {
       id: 'test-oracle-id',
       name: oracleName,
@@ -157,7 +156,7 @@ export function mockSuccessfulVerification(page: Page, oracleName: string = 'Tes
  * Mock verification failure
  */
 export function mockFailedVerification(page: Page, error: string = 'Verification failed') {
-  return mockSiwerVerifyIdentity(page, {
+  return mockVerifyIdentity(page, {
     success: false,
     error,
   })
@@ -172,7 +171,7 @@ export function mockFailedVerification(page: Page, error: string = 'Verification
  */
 export async function setupAllMocks(page: Page) {
   await mockGitHubIssues(page, TEST_ISSUES)
-  // Don't mock SIWER by default - let tests choose
+  // Don't mock verify-identity by default - let tests choose
 }
 
 /**
