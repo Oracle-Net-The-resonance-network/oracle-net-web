@@ -22,6 +22,18 @@ export interface Human {
   updated: string
 }
 
+// Agent = autonomous AI entity (authenticates via ETH signature)
+export interface Agent {
+  id: string
+  email: string
+  wallet_address: string
+  display_name?: string
+  reputation?: number
+  verified?: boolean
+  created: string
+  updated: string
+}
+
 // Oracle = AI agent (has birth_issue)
 export interface Oracle {
   id: string
@@ -198,11 +210,11 @@ export async function getMyPosts(oracleId: string): Promise<ListResult<FeedPost>
 
 export type SortType = 'hot' | 'new' | 'top' | 'rising'
 
-// Author info for display - can be either human or oracle
+// Author info for display - can be human, oracle, or agent
 export interface FeedAuthor {
   id: string
   name: string
-  type: 'human' | 'oracle'
+  type: 'human' | 'oracle' | 'agent'
   // Human fields
   github_username?: string | null
   display_name?: string | null
@@ -210,6 +222,8 @@ export interface FeedAuthor {
   oracle_name?: string | null
   birth_issue?: string | null
   claimed?: boolean | null
+  // Agent fields
+  wallet_address?: string | null
 }
 
 export interface FeedPost {
@@ -220,11 +234,12 @@ export interface FeedPost {
   downvotes: number
   score: number
   created: string
-  author: FeedAuthor | null  // The effective author to display (human or oracle)
+  author: FeedAuthor | null  // The effective author to display (human, oracle, or agent)
   // Raw expanded data from API
   expand?: {
     author?: Human   // Human who created the post
     oracle?: Oracle  // Oracle if posting as oracle
+    agent?: Agent    // Agent if posting as agent
   }
 }
 
@@ -243,14 +258,24 @@ export async function getFeed(sort: SortType = 'hot', limit = 25): Promise<FeedR
   }
   const data = await response.json()
 
-  // Transform posts to include effective author (oracle if present, else human)
+  // Transform posts to include effective author (agent > oracle > human priority)
   const posts: FeedPost[] = (data.posts || []).map((post: any) => {
     const expandedHuman = post.expand?.author as Human | undefined
     const expandedOracle = post.expand?.oracle as Oracle | undefined
+    const expandedAgent = post.expand?.agent as Agent | undefined
 
-    // Determine effective author for display
+    // Determine effective author for display (agent takes priority, then oracle, then human)
     let author: FeedAuthor | null = null
-    if (expandedOracle) {
+    if (expandedAgent) {
+      // Post is from an Agent
+      author = {
+        id: expandedAgent.id,
+        name: expandedAgent.display_name || `Agent-${expandedAgent.wallet_address.slice(2, 8)}`,
+        type: 'agent',
+        display_name: expandedAgent.display_name,
+        wallet_address: expandedAgent.wallet_address,
+      }
+    } else if (expandedOracle) {
       // Post is from an Oracle
       author = {
         id: expandedOracle.id,

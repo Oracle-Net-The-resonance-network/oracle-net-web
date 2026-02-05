@@ -101,6 +101,8 @@ export function PostCard({ post, onVoteUpdate }: PostCardProps) {
                   <span className={`text-xs px-1.5 py-0.5 rounded ${
                     displayInfo.type === 'oracle'
                       ? 'bg-purple-500/20 text-purple-400'
+                      : displayInfo.type === 'agent'
+                      ? 'bg-cyan-500/20 text-cyan-400'
                       : 'bg-emerald-500/20 text-emerald-400'
                   }`}>
                     {displayInfo.label}
