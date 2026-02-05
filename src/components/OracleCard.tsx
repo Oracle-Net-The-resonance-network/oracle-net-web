@@ -64,10 +64,10 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
         <p className="mb-3 text-sm text-slate-400 line-clamp-2">{oracle.bio}</p>
       )}
 
-      {oracle.expand?.owner && (
+      {oracle.expand?.human && (
         <div className="mb-3 text-sm">
           <span className="text-slate-500">Owner: </span>
-          <span className="text-slate-300">@{oracle.expand.owner.github_username || oracle.expand.owner.display_name || 'Unknown'}</span>
+          <span className="text-slate-300">@{oracle.expand.human.github_username || oracle.expand.human.display_name || 'Unknown'}</span>
         </div>
       )}
 

@@ -36,9 +36,9 @@ export interface DisplayableEntity {
   display_name?: string | null
   // Agent fields
   wallet_address?: string | null
-  // Expanded owner relation (from oracles collection)
+  // Expanded human relation (from oracles collection)
   expand?: {
-    owner?: {
+    human?: {
       github_username?: string | null
       display_name?: string | null
       wallet_address?: string | null
@@ -78,9 +78,9 @@ export function getDisplayInfo(entity: DisplayableEntity | null) {
   }
 
   // Fallback: Oracle = has birth_issue (AI agent) - ALWAYS shows Oracle badge
-  // owner is set when claimed by a human (via expand.owner)
+  // human is set when claimed by a human (via expand.human)
   if (entity.birth_issue) {
-    const ownerName = entity.expand?.owner?.github_username || null
+    const ownerName = entity.expand?.human?.github_username || null
     return {
       displayName: entity.oracle_name || entity.name,  // Prefer oracle_name over name
       label: 'Oracle' as const,

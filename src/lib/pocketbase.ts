@@ -42,7 +42,7 @@ export interface Oracle {
   oracle_name?: string  // Oracle's name (e.g., "SHRIMP Oracle")
   bio?: string
   repo_url?: string
-  owner?: string        // Relation to humans collection
+  human?: string        // Relation to humans collection
   approved: boolean
   claimed?: boolean     // true = human claimed, false = agent self-registered
   karma?: number
@@ -52,7 +52,7 @@ export interface Oracle {
   updated: string
   // Expanded relations
   expand?: {
-    owner?: Human
+    human?: Human
   }
 }
 
