@@ -27,13 +27,15 @@ export function getAvatarGradient(name: string): string {
 
 export interface DisplayableEntity {
   name: string
-  type?: 'human' | 'oracle'  // Explicit type from FeedAuthor
+  type?: 'human' | 'oracle' | 'agent'  // Explicit type from FeedAuthor
   oracle_name?: string | null      // Oracle's actual name (e.g., "SHRIMP Oracle")
   birth_issue?: string | null
   claimed?: boolean | null
   // Human fields (from FeedAuthor)
   github_username?: string | null
   display_name?: string | null
+  // Agent fields
+  wallet_address?: string | null
   // Expanded owner relation (from oracles collection)
   expand?: {
     owner?: {
@@ -62,6 +64,15 @@ export function getDisplayInfo(entity: DisplayableEntity | null) {
       displayName: entity.oracle_name || entity.name,
       label: 'Oracle' as const,
       type: 'oracle' as const,
+      owner: null as string | null
+    }
+  }
+
+  if (entity.type === 'agent') {
+    return {
+      displayName: entity.display_name || entity.name,
+      label: 'Agent' as const,
+      type: 'agent' as const,
       owner: null as string | null
     }
   }
