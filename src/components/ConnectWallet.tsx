@@ -5,6 +5,12 @@ import { useAuth } from '../contexts/AuthContext'
 import { API_URL } from '../lib/wagmi'
 import { pb } from '../lib/pocketbase'
 
+interface ChainlinkData {
+  price: number
+  roundId: string
+  timestamp: number
+}
+
 export default function ConnectWallet() {
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
@@ -17,6 +23,9 @@ export default function ConnectWallet() {
   const [error, setError] = useState<string | null>(null)
   const [siweMessage, setSiweMessage] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [chainlink, setChainlink] = useState<ChainlinkData | null>(null)
+  const [signature, setSignature] = useState<string | null>(null)
+  const [verified, setVerified] = useState(false)
 
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''
 
@@ -56,6 +65,8 @@ export default function ConnectWallet() {
 
     setIsAuthenticating(true)
     setError(null)
+    setSignature(null)
+    setVerified(false)
 
     try {
       // Get Chainlink roundId as nonce
@@ -63,11 +74,17 @@ export default function ConnectWallet() {
       if (!nonceRes.ok) {
         throw new Error('Failed to get nonce')
       }
-      const { roundId } = await nonceRes.json()
+      const data = await nonceRes.json()
 
-      if (!roundId) {
+      if (!data.roundId) {
         throw new Error('Failed to get roundId')
       }
+
+      setChainlink({
+        price: data.price,
+        roundId: data.roundId,
+        timestamp: data.timestamp,
+      })
 
       // Build SIWE message using viem
       const message = createSiweMessage({
@@ -77,7 +94,7 @@ export default function ConnectWallet() {
         uri: window.location.origin,
         version: '1',
         chainId: chainId || 1,
-        nonce: roundId,
+        nonce: data.roundId,
       })
 
       setSiweMessage(message)
@@ -98,13 +115,14 @@ export default function ConnectWallet() {
 
     try {
       // Sign message with wallet
-      const signature = await signMessageAsync({ message: siweMessage })
+      const sig = await signMessageAsync({ message: siweMessage })
+      setSignature(sig)
 
       // Verify with CF Worker
       const verifyRes = await fetch(`${API_URL}/api/auth/humans/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: siweMessage, signature })
+        body: JSON.stringify({ message: siweMessage, signature: sig })
       })
       const result = await verifyRes.json()
 
@@ -112,13 +130,11 @@ export default function ConnectWallet() {
         throw new Error(result.error || 'Verification failed')
       }
 
+      setVerified(true)
+
       // Save token to auth store and fetch fresh oracle data
       pb.authStore.save(result.token, null)
       await refreshOracle()
-
-      // Clear preview state
-      setShowPreview(false)
-      setSiweMessage(null)
 
     } catch (e: any) {
       setError(e.message || 'Sign in failed')
@@ -131,6 +147,9 @@ export default function ConnectWallet() {
   const cancelPreview = () => {
     setShowPreview(false)
     setSiweMessage(null)
+    setChainlink(null)
+    setSignature(null)
+    setVerified(false)
     setError(null)
   }
 
@@ -140,7 +159,18 @@ export default function ConnectWallet() {
     setOracle(null)
     setShowPreview(false)
     setSiweMessage(null)
+    setChainlink(null)
+    setSignature(null)
+    setVerified(false)
   }
+
+  const formatPrice = (price: number) =>
+    new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(price)
 
   // Connected and authenticated
   if (isConnected && address) {
@@ -159,40 +189,82 @@ export default function ConnectWallet() {
           </button>
         </div>
 
-        {/* SIWE Message Preview Modal */}
-        {showPreview && siweMessage && (
-          <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-blue-400">Review Sign-In Message</h3>
-              <button
-                onClick={cancelPreview}
-                className="text-gray-400 hover:text-white text-lg leading-none"
-                aria-label="Close"
-              >
-                &times;
-              </button>
+        {/* Step-by-step flow like siwe-service */}
+        {showPreview && (
+          <div className="space-y-3">
+            {/* 1. Chainlink BTC/USD */}
+            {chainlink && (
+              <div className="rounded-lg bg-slate-800/50 p-4 ring-1 ring-slate-700">
+                <p className="text-xs text-slate-500">1. Chainlink BTC/USD</p>
+                <p className="text-2xl font-bold text-orange-400">{formatPrice(chainlink.price)}</p>
+                <p className="text-xs text-slate-500">{new Date(chainlink.timestamp * 1000).toISOString()}</p>
+              </div>
+            )}
+
+            {/* 2. Wallet Connected */}
+            <div className="rounded-lg bg-slate-800/50 p-4 ring-1 ring-slate-700">
+              <p className="text-xs text-slate-500">2. Wallet Connected</p>
+              <p className="text-sm font-mono text-slate-200">{address}</p>
             </div>
-            <p className="text-xs text-gray-400">
-              Your wallet will ask you to sign this message. Review it carefully:
-            </p>
-            <pre className="rounded-lg bg-gray-900/50 p-3 text-xs text-gray-300 overflow-x-auto whitespace-pre-wrap break-all font-mono ring-1 ring-gray-700">
-              {siweMessage}
-            </pre>
-            <div className="flex gap-2">
-              <button
-                onClick={cancelPreview}
-                className="flex-1 rounded-lg px-4 py-2 text-sm text-gray-400 ring-1 ring-gray-600 hover:bg-gray-800 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmSignIn}
-                disabled={isAuthenticating}
-                className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 cursor-pointer"
-              >
-                {isAuthenticating ? 'Signing...' : 'Confirm & Sign'}
-              </button>
-            </div>
+
+            {/* 3. Message */}
+            {siweMessage && (
+              <div className="rounded-lg bg-slate-800/50 p-4 ring-1 ring-slate-700">
+                <p className="text-xs text-slate-500">3. Message</p>
+                <pre className="mt-2 text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap break-all font-mono">
+                  {siweMessage}
+                </pre>
+              </div>
+            )}
+
+            {/* 4. Signature (after signing) */}
+            {signature && (
+              <div className="rounded-lg bg-slate-800/50 p-4 ring-1 ring-slate-700">
+                <p className="text-xs text-slate-500">4. Signature</p>
+                <p className="mt-1 text-xs font-mono text-slate-300 break-all">{signature}</p>
+              </div>
+            )}
+
+            {/* 5. Verified */}
+            {verified && (
+              <div className="rounded-lg bg-slate-800/50 p-4 ring-1 ring-slate-700">
+                <p className="text-xs text-slate-500">5. Verified</p>
+                <p className="text-sm text-green-400">✓ Valid</p>
+              </div>
+            )}
+
+            {/* Authenticated result */}
+            {verified && chainlink && (
+              <div className="rounded-lg bg-slate-800/50 p-5 ring-1 ring-emerald-500/30">
+                <p className="text-lg font-bold text-emerald-400">Authenticated!</p>
+                <p className="mt-1 text-sm text-slate-300">
+                  <span className="text-slate-500">Address:</span> <span className="font-mono">{address}</span>
+                </p>
+                <p className="mt-2 text-lg font-bold text-orange-400">
+                  Signed when BTC was {formatPrice(chainlink.price)}
+                </p>
+                <p className="text-xs text-slate-500">{new Date(chainlink.timestamp * 1000).toISOString()}</p>
+              </div>
+            )}
+
+            {/* Sign button (before signing) */}
+            {!signature && (
+              <div className="flex gap-2">
+                <button
+                  onClick={cancelPreview}
+                  className="flex-1 rounded-lg px-4 py-2 text-sm text-gray-400 ring-1 ring-gray-600 hover:bg-gray-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmSignIn}
+                  disabled={isAuthenticating}
+                  className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                >
+                  {isAuthenticating ? 'Signing...' : 'Sign In with Ethereum'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
