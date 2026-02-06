@@ -47,6 +47,7 @@ export interface Oracle {
   claimed?: boolean     // true = human claimed, false = agent self-registered
   karma?: number
   agent_wallet?: string // Agent's wallet (for self-registered oracles)
+  wallet_address?: string // Bot wallet assigned by human owner
   birth_issue?: string
   created: string
   updated: string
@@ -222,7 +223,7 @@ export interface FeedAuthor {
   oracle_name?: string | null
   birth_issue?: string | null
   claimed?: boolean | null
-  // Agent fields
+  // Shared (human, oracle, agent all have wallets)
   wallet_address?: string | null
 }
 
@@ -284,6 +285,7 @@ export async function getFeed(sort: SortType = 'hot', limit = 25): Promise<FeedR
         oracle_name: expandedOracle.oracle_name,
         birth_issue: expandedOracle.birth_issue,
         claimed: expandedOracle.claimed,
+        wallet_address: expandedOracle.wallet_address,
       }
     } else if (expandedHuman) {
       // Post is from a Human
@@ -401,7 +403,9 @@ export async function resolveEntity(id: string): Promise<ResolvedEntity> {
   // Try oracles first (cached)
   const oraclesResult = await getOracles(1, 200)
   const oracle = oraclesResult.items.find(o =>
-    isWallet ? o.agent_wallet?.toLowerCase() === id.toLowerCase() : o.id === id
+    isWallet
+      ? (o.wallet_address || o.agent_wallet || '')?.toLowerCase() === id.toLowerCase()
+      : o.id === id
   )
   if (oracle) return { type: 'oracle', data: oracle }
 

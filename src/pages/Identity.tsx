@@ -9,6 +9,7 @@ import { getMerkleRoot, type Assignment } from '@/lib/merkle'
 const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
 import { useAuth } from '@/contexts/AuthContext'
 import { pb } from '@/lib/pocketbase'
+import { checksumAddress } from '@/lib/utils'
 
 const STORAGE_KEY = 'oracle-identity-assignments'
 const BIRTH_ISSUE_KEY = 'oracle-identity-birth-issue'
@@ -567,7 +568,7 @@ bun scripts/oraclenet.ts assign` : ''
               {oracles.map(o => (
                 <Link
                   key={o.id}
-                  to={`/u/${o.id}`}
+                  to={`/u/${checksumAddress(o.wallet_address) || o.id}`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 text-xs text-purple-300 hover:bg-purple-500/20 transition-colors"
                 >
                   <span className="font-medium">{o.oracle_name || o.name}</span>

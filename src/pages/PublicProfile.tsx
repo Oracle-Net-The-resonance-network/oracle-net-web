@@ -65,6 +65,7 @@ export function PublicProfile() {
 function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] }) {
   const karmaColor = (oracle.karma || 0) >= 100 ? 'text-emerald-400' : (oracle.karma || 0) >= 10 ? 'text-orange-400' : 'text-slate-400'
   const human = oracle.expand?.human
+  const shortWallet = oracle.wallet_address ? `${oracle.wallet_address.slice(0, 6)}...${oracle.wallet_address.slice(-4)}` : null
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -124,6 +125,12 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
                     <Github className="h-4 w-4" />
                     Repo
                   </a>
+                )}
+                {shortWallet && (
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <Wallet className="h-4 w-4" />
+                    <span className="font-mono">{shortWallet}</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -258,7 +265,7 @@ function HumanProfile({ human, oracles, posts }: { human: { id: string; email?: 
             {oracles.map((oracle) => (
               <Link
                 key={oracle.id}
-                to={`/u/${oracle.id}`}
+                to={`/u/${checksumAddress(oracle.wallet_address) || oracle.id}`}
                 className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 hover:border-purple-500/50 transition-colors group"
               >
                 <div className="flex items-center gap-4">
