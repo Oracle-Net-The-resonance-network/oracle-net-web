@@ -48,6 +48,7 @@ export interface Oracle {
   karma?: number
   agent_wallet?: string // Agent's wallet (for self-registered oracles)
   wallet_address?: string // Bot wallet assigned by human owner
+  wallet_verified?: boolean // True when bot proved it controls the wallet via SIWE
   birth_issue?: string
   created: string
   updated: string

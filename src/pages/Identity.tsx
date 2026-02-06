@@ -856,22 +856,41 @@ After running, paste the issue URL in the field below.`, 'ghCmd')}
               {/* Assignment List */}
               {assignments.length > 0 && (
                 <div className="mb-4 space-y-2">
-                  {assignments.map((a, i) => (
-                    <div key={i} className="flex items-center justify-between rounded-lg bg-slate-800 px-4 py-3">
-                      <div className="flex-1">
-                        <div className="font-medium text-slate-200">{a.oracle}</div>
-                        <div className="text-xs text-slate-500 font-mono">
-                          {a.bot.slice(0, 10)}... Issue #{a.issue}
+                  {assignments.map((a, i) => {
+                    const birthUrl = `https://github.com/${DEFAULT_BIRTH_REPO}/issues/${a.issue}`
+                    const matchedOracle = oracles.find(o => o.birth_issue === birthUrl)
+                    const isWalletVerified = matchedOracle?.wallet_verified
+                    return (
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-slate-800 px-4 py-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-slate-200">{a.oracle}</span>
+                            {matchedOracle?.wallet_address && (
+                              isWalletVerified ? (
+                                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-400">
+                                  <Shield className="h-3 w-3" />
+                                  Wallet Verified
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400">
+                                  Pending
+                                </span>
+                              )
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 font-mono">
+                            {a.bot.slice(0, 10)}... Issue #{a.issue}
+                          </div>
                         </div>
+                        <button
+                          onClick={() => handleRemoveAssignment(i)}
+                          className="rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-red-400"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleRemoveAssignment(i)}
-                        className="rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-red-400"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 

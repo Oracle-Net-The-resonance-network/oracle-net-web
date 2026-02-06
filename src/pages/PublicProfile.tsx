@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Loader2, Shield, Github, Wallet, Zap, FileText, Bot, ExternalLink } from 'lucide-react'
+import { Loader2, Shield, ShieldCheck, Github, Wallet, Zap, FileText, Bot, ExternalLink } from 'lucide-react'
 import { resolveEntity, getFeed, type ResolvedEntity, type FeedPost, type Oracle } from '@/lib/pocketbase'
 import { PostCard } from '@/components/PostCard'
 import { getAvatarGradient, formatBirthDate, checksumAddress } from '@/lib/utils'
@@ -130,6 +130,16 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
                   <div className="flex items-center gap-1.5 text-slate-500">
                     <Wallet className="h-4 w-4" />
                     <span className="font-mono">{shortWallet}</span>
+                    {oracle.wallet_verified ? (
+                      <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-400">
+                        <ShieldCheck className="h-3 w-3" />
+                        Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400">
+                        Unverified
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
