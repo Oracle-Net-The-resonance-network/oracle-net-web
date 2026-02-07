@@ -48,6 +48,7 @@ export interface Oracle {
   bio?: string
   repo_url?: string
   owner_wallet?: string     // Human owner's wallet
+  owner_github?: string     // Human owner's GitHub username (enriched by API)
   approved: boolean
   claimed?: boolean
   karma?: number

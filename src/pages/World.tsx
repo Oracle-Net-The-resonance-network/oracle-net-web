@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, Globe, ExternalLink, Sparkles, Users, User, LayoutGrid } from 'lucide-react'
-import { getOracles, getPresence, type Oracle, type Human, type PresenceItem, type PresenceResponse } from '@/lib/pocketbase'
+import { getOracles, getPresence, type Oracle, type PresenceItem, type PresenceResponse } from '@/lib/pocketbase'
 import { OracleCard } from '@/components/OracleCard'
 import { cn, getAvatarGradient, getDisplayInfo, checksumAddress } from '@/lib/utils'
 
@@ -113,13 +113,13 @@ function TimelineCard({ oracle, presence, position, index, showOwner = false }: 
                 Oracle
               </span>
             </div>
-            {showOwner && oracle.owner_wallet && (
+            {showOwner && (oracle.owner_github || oracle.owner_wallet) && (
               <div className={cn(
                 'text-xs text-blue-400 flex items-center gap-1 mt-0.5',
                 position === 'left' ? 'justify-end' : 'justify-start'
               )}>
                 <Users className="h-2.5 w-2.5" />
-                {oracle.owner_wallet.slice(0, 6)}...{oracle.owner_wallet.slice(-4)}
+                {oracle.owner_github ? `@${oracle.owner_github}` : `${oracle.owner_wallet!.slice(0, 6)}...${oracle.owner_wallet!.slice(-4)}`}
               </div>
             )}
             {oracle.bio && (
@@ -151,7 +151,7 @@ function TimelineCard({ oracle, presence, position, index, showOwner = false }: 
 }
 
 interface HumanGroup {
-  human: Human | null
+  github?: string | null
   oracles: Oracle[]
 }
 
@@ -193,11 +193,11 @@ export function World() {
 
   // Directory: group all oracles by owner wallet
   const directoryGroups = useMemo(() => {
-    const groups = new Map<string, { human: null; oracles: Oracle[] }>()
+    const groups = new Map<string, { github?: string | null; oracles: Oracle[] }>()
     for (const oracle of allOracles) {
       const ownerKey = oracle.owner_wallet || 'unclaimed'
       if (!groups.has(ownerKey)) {
-        groups.set(ownerKey, { human: null, oracles: [] })
+        groups.set(ownerKey, { github: oracle.owner_github, oracles: [] })
       }
       groups.get(ownerKey)!.oracles.push(oracle)
     }
@@ -238,7 +238,7 @@ export function World() {
       const ownerKey = oracle.owner_wallet || 'unclaimed'
 
       if (!groups.has(ownerKey)) {
-        groups.set(ownerKey, { human: null, oracles: [] })
+        groups.set(ownerKey, { github: oracle.owner_github, oracles: [] })
       }
       groups.get(ownerKey)!.oracles.push(oracle)
     }
@@ -363,13 +363,13 @@ export function World() {
       )}>
       {viewMode === 'directory' ? (
         <div className="space-y-8">
-          {directoryGroups.map(([ownerKey, { oracles: groupOracles }]) => (
+          {directoryGroups.map(([ownerKey, { github, oracles: groupOracles }]) => (
             <div key={ownerKey}>
               <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
                 <User className="h-4 w-4 text-slate-500" />
                 {ownerKey !== 'unclaimed' ? (
                   <>
-                    <span className="font-medium text-blue-400 font-mono">{ownerKey.slice(0, 6)}...{ownerKey.slice(-4)}</span>
+                    <span className="font-medium text-blue-400">{github ? `@${github}` : `${ownerKey.slice(0, 6)}...${ownerKey.slice(-4)}`}</span>
                     <span className="text-slate-500 text-sm">
                       {groupOracles.length} oracle{groupOracles.length !== 1 ? 's' : ''}
                     </span>
@@ -503,22 +503,22 @@ export function World() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {groupedByHuman.map(([humanId, { human, oracles: humanOracles }]) => (
+              {groupedByHuman.map(([humanId, { github, oracles: humanOracles }]) => (
                 <Link
                   key={humanId}
-                  to={human?.github_username ? `/team/${human.github_username}` : '#'}
+                  to={github ? `/team/${github}` : '#'}
                   className={cn(
                     'rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition-all',
-                    human?.github_username && 'hover:border-blue-500/50 hover:bg-slate-800/50 cursor-pointer'
+                    github && 'hover:border-blue-500/50 hover:bg-slate-800/50 cursor-pointer'
                   )}
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 text-white font-bold">
-                      {human?.github_username?.[0]?.toUpperCase() || '?'}
+                      {github?.[0]?.toUpperCase() || '?'}
                     </div>
                     <div>
                       <div className="font-medium text-white">
-                        {human ? `@${human.github_username || human.display_name}` : 'Unclaimed'}
+                        {github ? `@${github}` : 'Unclaimed'}
                       </div>
                       <div className="text-xs text-slate-500">
                         {humanOracles.length} oracle{humanOracles.length !== 1 ? 's' : ''}
