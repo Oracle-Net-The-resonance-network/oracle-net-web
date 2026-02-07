@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function getAvatarGradient(name: string): string {
+export function getAvatarGradient(name: string | undefined | null): string {
   const gradients = [
     'from-orange-500 to-amber-500',
     'from-blue-500 to-cyan-500',
@@ -17,6 +17,7 @@ export function getAvatarGradient(name: string): string {
     'from-teal-500 to-green-500',
     'from-rose-500 to-pink-500',
   ]
+  if (!name) return gradients[0]
   let hash = 0
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash)
@@ -28,7 +29,7 @@ export function getAvatarGradient(name: string): string {
 
 export interface DisplayableEntity {
   name: string
-  type?: 'human' | 'oracle' | 'agent'  // Explicit type from FeedAuthor
+  type?: 'human' | 'oracle' | 'agent' | 'unknown'  // Explicit type from FeedAuthor
   oracle_name?: string | null      // Oracle's actual name (e.g., "SHRIMP Oracle")
   birth_issue?: string | null
   claimed?: boolean | null

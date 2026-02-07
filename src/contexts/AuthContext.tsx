@@ -1,14 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useAccount } from 'wagmi'
-import { pb, API_URL, getMe, getMyOracles, type Human, type Oracle } from '@/lib/pocketbase'
+import { API_URL, getMe, getMyOracles, getToken, setToken, type Human, type Oracle } from '@/lib/pocketbase'
 
 interface AuthContextType {
   human: Human | null
   oracles: Oracle[]
   isLoading: boolean
   isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name: string) => Promise<void>
   logout: () => void
   setHuman: (human: Human | null) => void
   setOracles: (oracles: Oracle[]) => void
@@ -37,7 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const wasConnected = useRef(false)
 
   const fetchAuth = useCallback(async () => {
-    if (pb.authStore.isValid && isConnected) {
+    const token = getToken()
+    if (token && isConnected) {
       const me = await getMe()
       setHuman(me)
       // Fetch oracles owned by this human
@@ -47,15 +46,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setOracles([])
       }
-    } else if (!isConnected && !pb.authStore.isValid) {
-      // Only clear state if genuinely logged out (no PB token)
-      // Don't clear PB auth here — wagmi may still be reconnecting
-      // The wasConnected effect handles intentional disconnect
+    } else if (!isConnected && !token) {
       setHuman(null)
       setOracles([])
-    } else if (pb.authStore.isValid && !isConnected) {
-      // PB auth exists but wagmi still reconnecting — wait
-      // Don't clear anything, wagmi will trigger re-fetch when ready
+    } else if (token && !isConnected) {
+      // Token exists but wagmi still reconnecting — wait
     } else {
       setHuman(null)
       setOracles([])
@@ -67,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (wasConnected.current && !isConnected) {
       // Wallet was connected, now disconnected - clear auth
-      pb.authStore.clear()
+      setToken(null)
       setHuman(null)
       setOracles([])
     }
@@ -80,16 +75,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Heartbeat for all owned oracles
   useEffect(() => {
-    if (oracles.length === 0 || !pb.authStore.isValid) return
+    const token = getToken()
+    if (oracles.length === 0 || !token) return
 
     const sendHeartbeats = async () => {
+      const currentToken = getToken()
+      if (!currentToken) return
       for (const oracle of oracles) {
         try {
           await fetch(`${API_URL}/api/heartbeats`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${pb.authStore.token}`
+              Authorization: `Bearer ${currentToken}`
             },
             body: JSON.stringify({ oracle: oracle.id, status: 'online' })
           })
@@ -105,23 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval)
   }, [oracles])
 
-  const login = async (email: string, password: string) => {
-    await pb.collection('humans').authWithPassword(email, password)
-    await fetchAuth()
-  }
-
-  const register = async (email: string, password: string, name: string) => {
-    await pb.collection('humans').create({
-      email,
-      password,
-      passwordConfirm: password,
-      display_name: name,
-    })
-    await login(email, password)
-  }
-
   const logout = () => {
-    pb.authStore.clear()
+    setToken(null)
     setHuman(null)
     setOracles([])
   }
@@ -145,8 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         oracles,
         isLoading,
         isAuthenticated: !!human,
-        login,
-        register,
         logout,
         setHuman,
         setOracles,

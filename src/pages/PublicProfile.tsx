@@ -18,11 +18,10 @@ export function PublicProfile() {
     Promise.all([resolveEntity(id), getFeed('new', 100)])
       .then(([resolved, feed]) => {
         setEntity(resolved)
-        // Filter posts by this entity — match by wallet or PB id
+        // Filter posts by wallet (wallet IS identity)
         const entityPosts = feed.posts.filter(p => {
-          if (!p.author) return false
-          if (isWallet) return p.author.wallet_address?.toLowerCase() === id.toLowerCase()
-          return p.author.id === id
+          if (!isWallet) return false
+          return p.author_wallet?.toLowerCase() === id.toLowerCase()
         })
         setPosts(entityPosts)
       })
@@ -64,8 +63,7 @@ export function PublicProfile() {
 
 function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] }) {
   const karmaColor = (oracle.karma || 0) >= 100 ? 'text-emerald-400' : (oracle.karma || 0) >= 10 ? 'text-orange-400' : 'text-slate-400'
-  const human = oracle.expand?.human
-  const shortWallet = oracle.wallet_address ? `${oracle.wallet_address.slice(0, 6)}...${oracle.wallet_address.slice(-4)}` : null
+  const shortWallet = oracle.bot_wallet ? `${oracle.bot_wallet.slice(0, 6)}...${oracle.bot_wallet.slice(-4)}` : null
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -95,13 +93,13 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
               )}
 
               <div className="mt-4 flex flex-wrap items-center justify-center sm:justify-start gap-4 text-sm">
-                {human && (
+                {oracle.owner_wallet && (
                   <Link
-                    to={`/u/${checksumAddress(human.wallet_address) || human.id}`}
+                    to={`/u/${checksumAddress(oracle.owner_wallet)}`}
                     className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 transition-colors"
                   >
                     <Shield className="h-4 w-4" />
-                    Claimed by @{human.github_username || human.display_name || 'Human'}
+                    Claimed by {oracle.owner_wallet.slice(0, 6)}...{oracle.owner_wallet.slice(-4)}
                   </Link>
                 )}
                 {oracle.birth_issue && (
@@ -179,7 +177,7 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
 
 // === HUMAN PROFILE ===
 
-function HumanProfile({ human, oracles, posts }: { human: { id: string; email?: string; display_name?: string; github_username?: string; wallet_address?: string; verified_at?: string; created?: string; updated?: string }; oracles: Oracle[]; posts: FeedPost[] }) {
+function HumanProfile({ human, oracles, posts }: { human: { display_name?: string; github_username?: string; wallet_address?: string }; oracles: Oracle[]; posts: FeedPost[] }) {
   const totalKarma = oracles.reduce((sum, o) => sum + (o.karma || 0), 0)
   const karmaColor = totalKarma >= 100 ? 'text-emerald-400' : totalKarma >= 10 ? 'text-orange-400' : 'text-slate-400'
   const isGithubVerified = !!human.github_username
@@ -275,7 +273,7 @@ function HumanProfile({ human, oracles, posts }: { human: { id: string; email?: 
             {oracles.map((oracle) => (
               <Link
                 key={oracle.id}
-                to={`/u/${checksumAddress(oracle.wallet_address) || oracle.id}`}
+                to={`/u/${checksumAddress(oracle.bot_wallet) || oracle.id}`}
                 className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 hover:border-purple-500/50 transition-colors group"
               >
                 <div className="flex items-center gap-4">
@@ -311,7 +309,7 @@ function HumanProfile({ human, oracles, posts }: { human: { id: string; email?: 
 
 // === AGENT PROFILE ===
 
-function AgentProfile({ agent, posts }: { agent: { id: string; display_name?: string; wallet_address: string }; posts: FeedPost[] }) {
+function AgentProfile({ agent, posts }: { agent: { display_name?: string; wallet_address: string }; posts: FeedPost[] }) {
   const displayName = agent.display_name || `Agent-${agent.wallet_address.slice(2, 8)}`
   const shortWallet = agent.wallet_address ? `${agent.wallet_address.slice(0, 6)}...${agent.wallet_address.slice(-4)}` : null
 

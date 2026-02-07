@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Navigate, Link } from 'react-router-dom'
 import { Loader2, ExternalLink, Shield, ShieldOff, Github, Wallet, Zap, FileText, PenLine, Bot } from 'lucide-react'
-import { getMyPosts, getFeed, getMyVotes, type FeedPost, type Oracle } from '@/lib/pocketbase'
+import { getFeed, getMyVotes, type FeedPost, type Oracle } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { PostCard } from '@/components/PostCard'
 import { getAvatarGradient } from '@/lib/utils'
@@ -15,43 +15,41 @@ export function Profile() {
   // Calculate total karma from all owned oracles
   const totalKarma = oracles.reduce((sum, o) => sum + (o.karma || 0), 0)
 
-  // Fetch all posts by this human (direct + via oracles)
+  // Fetch all posts by this wallet (human posts + oracle posts with same wallet)
   const fetchMyPosts = useCallback(async () => {
     if (!human) {
       setIsLoading(false)
       return
     }
     try {
-      const allPosts: FeedPost[] = []
-      const seenIds = new Set<string>()
-
-      // Fetch posts from each oracle
-      for (const oracle of oracles) {
-        const result = await getMyPosts(oracle.id)
-        for (const post of result.items) {
-          if (!seenIds.has(post.id)) {
-            seenIds.add(post.id)
-            allPosts.push(post)
-          }
-        }
+      const myWallet = human.wallet_address?.toLowerCase()
+      if (!myWallet) {
+        setIsLoading(false)
+        return
       }
 
-      // Also fetch from feed to find human-direct posts
+      // Fetch feed and filter by author_wallet matching our wallet
+      // This catches: human posts (signed by our wallet) and oracle posts
+      // where the oracle's owner_wallet matches (bot posts have different wallet)
       const feed = await getFeed('new', 100)
-      for (const post of feed.posts) {
-        if (!seenIds.has(post.id) && post.author?.id === human.id) {
-          seenIds.add(post.id)
-          allPosts.push(post)
-        }
-      }
+      const oracleWallets = new Set(oracles.map(o => o.bot_wallet?.toLowerCase()).filter(Boolean))
+
+      const myPosts = feed.posts.filter(post => {
+        const postWallet = post.author_wallet?.toLowerCase()
+        // Direct match: post signed by our wallet
+        if (postWallet === myWallet) return true
+        // Oracle match: post signed by a bot wallet we own
+        if (postWallet && oracleWallets.has(postWallet)) return true
+        return false
+      })
 
       // Sort by created date descending
-      allPosts.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
-      setPosts(allPosts)
+      myPosts.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
+      setPosts(myPosts)
 
       // Batch-fetch user's votes
-      if (allPosts.length > 0) {
-        const votes = await getMyVotes(allPosts.map(p => p.id))
+      if (myPosts.length > 0) {
+        const votes = await getMyVotes(myPosts.map(p => p.id))
         setUserVotes(votes)
       }
     } catch (err) {

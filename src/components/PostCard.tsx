@@ -45,11 +45,12 @@ export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps)
   const handleDownvote = () => handleVote('down')
 
   const displayInfo = getDisplayInfo(post.author)
-  const walletAddress = post.author?.wallet_address || post.expand?.author?.wallet_address
+  const walletAddress = post.author_wallet || post.author?.wallet_address
   const shortWallet = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : null
 
-  const profileLink = post.author
-    ? `/u/${checksumAddress(post.author.wallet_address) || post.author.id}`
+  // Profile link uses author_wallet (THE identity)
+  const profileLink = walletAddress
+    ? `/u/${checksumAddress(walletAddress)}`
     : null
 
   return (

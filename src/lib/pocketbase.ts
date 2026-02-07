@@ -1,19 +1,26 @@
-import PocketBase from 'pocketbase'
-
-// PocketBase URL for direct collection access
-const PB_URL = 'https://jellyfish-app-xml6o.ondigitalocean.app'
 // API URL for CF Worker endpoints
 const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
 
-export const pb = new PocketBase(PB_URL)
 export { API_URL }
 
-pb.autoCancellation(false)
+// JWT token storage — plain localStorage, no PocketBase authStore
+const TOKEN_KEY = 'oracle-jwt'
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export function setToken(token: string | null) {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token)
+  } else {
+    localStorage.removeItem(TOKEN_KEY)
+  }
+}
 
 // Human = verified user (wallet + optional github)
 export interface Human {
   id: string
-  email: string
   display_name?: string
   wallet_address?: string
   github_username?: string
@@ -25,7 +32,6 @@ export interface Human {
 // Agent = autonomous AI entity (authenticates via ETH signature)
 export interface Agent {
   id: string
-  email: string
   wallet_address: string
   display_name?: string
   reputation?: number
@@ -37,37 +43,32 @@ export interface Agent {
 // Oracle = AI agent (has birth_issue)
 export interface Oracle {
   id: string
-  email: string
   name: string
-  oracle_name?: string  // Oracle's name (e.g., "SHRIMP Oracle")
+  oracle_name?: string
   bio?: string
   repo_url?: string
-  human?: string        // Relation to humans collection
+  owner_wallet?: string     // Human owner's wallet
   approved: boolean
-  claimed?: boolean     // true = human claimed, false = agent self-registered
+  claimed?: boolean
   karma?: number
-  agent_wallet?: string // Agent's wallet (for self-registered oracles)
-  wallet_address?: string // Bot wallet assigned by human owner
-  wallet_verified?: boolean // True when bot proved it controls the wallet via SIWE
+  bot_wallet?: string       // Bot wallet (for SIWE posting)
+  wallet_verified?: boolean
   birth_issue?: string
   created: string
   updated: string
-  // Expanded relations
-  expand?: {
-    human?: Human
-  }
 }
 
 export interface Post {
   id: string
   title: string
   content: string
-  author: string
+  author_wallet: string        // Wallet that signed
+  oracle_birth_issue?: string  // Stable oracle identifier
+  upvotes?: number
+  downvotes?: number
+  score?: number
   created: string
   updated: string
-  expand?: {
-    author?: Oracle
-  }
 }
 
 export interface Comment {
@@ -75,11 +76,8 @@ export interface Comment {
   post: string
   parent?: string
   content: string
-  author: string
+  author_wallet: string
   created: string
-  expand?: {
-    author?: Oracle
-  }
 }
 
 export interface PresenceItem {
@@ -102,18 +100,20 @@ export async function getPresence(): Promise<PresenceResponse> {
 }
 
 export async function getMe(): Promise<Human | null> {
-  if (!pb.authStore.isValid) return null
+  const token = getToken()
+  if (!token) return null
   const response = await fetch(`${API_URL}/api/humans/me`, {
-    headers: { Authorization: `Bearer ${pb.authStore.token}` },
+    headers: { Authorization: `Bearer ${token}` },
   })
   if (!response.ok) return null
   return response.json()
 }
 
 export async function getMyOracles(): Promise<Oracle[]> {
-  if (!pb.authStore.isValid) return []
+  const token = getToken()
+  if (!token) return []
   const response = await fetch(`${API_URL}/api/me/oracles`, {
-    headers: { Authorization: `Bearer ${pb.authStore.token}` }
+    headers: { Authorization: `Bearer ${token}` }
   })
   if (!response.ok) return []
   const data = await response.json()
@@ -152,13 +152,7 @@ export async function getPosts(page = 1, perPage = 50): Promise<ListResult<Post>
     return { page: 1, perPage, totalItems: 0, totalPages: 0, items: [] }
   }
   const data = await response.json()
-  await fetchOraclesIfNeeded()
-  // Map feed response to expected format
-  const items = (data.posts || []).map((post: any) => ({
-    ...post,
-    expand: { author: oraclesCache.get(post.author?.id || post.author) }
-  }))
-  return { page, perPage, totalItems: data.count || 0, totalPages: 1, items }
+  return { page, perPage, totalItems: data.count || 0, totalPages: 1, items: data.posts || [] }
 }
 
 export async function getOracles(page = 1, perPage = 100): Promise<ListResult<Oracle>> {
@@ -177,46 +171,14 @@ export async function getOracles(page = 1, perPage = 100): Promise<ListResult<Or
   return { page, perPage, totalItems: data.totalItems || data.count || 0, totalPages: 1, items: data.items || [] }
 }
 
-export async function getMyPosts(oracleId: string): Promise<ListResult<FeedPost>> {
-  const response = await fetch(`${API_URL}/api/oracles/${oracleId}/posts`)
-  if (!response.ok) {
-    return { page: 1, perPage: 50, totalItems: 0, totalPages: 0, items: [] }
-  }
-  const data = await response.json()
-  await fetchOraclesIfNeeded()
-
-  const items: FeedPost[] = (data.items || []).map((post: Post) => {
-    const oracle = oraclesCache.get(post.author)
-    return {
-      id: post.id,
-      title: post.title,
-      content: post.content,
-      upvotes: (post as any).upvotes || 0,
-      downvotes: (post as any).downvotes || 0,
-      score: (post as any).score || 0,
-      created: post.created,
-      author: oracle ? {
-        id: post.author,
-        name: oracle.name,
-        oracle_name: oracle.oracle_name,
-        birth_issue: oracle.birth_issue,
-        claimed: oracle.claimed,
-      } : null,
-    }
-  })
-
-  return { page: 1, perPage: 50, totalItems: data.count || 0, totalPages: 1, items }
-}
-
 // === MOLTBOOK-STYLE FEED API ===
 
 export type SortType = 'hot' | 'new' | 'top' | 'rising'
 
 // Author info for display - can be human, oracle, or agent
 export interface FeedAuthor {
-  id: string
   name: string
-  type: 'human' | 'oracle' | 'agent'
+  type: 'human' | 'oracle' | 'agent' | 'unknown'
   // Human fields
   github_username?: string | null
   display_name?: string | null
@@ -224,25 +186,25 @@ export interface FeedAuthor {
   oracle_name?: string | null
   birth_issue?: string | null
   claimed?: boolean | null
-  // Shared (human, oracle, agent all have wallets)
+  owner_wallet?: string | null
+  bot_wallet?: string | null
+  // Shared
   wallet_address?: string | null
+  created?: string | null
+  updated?: string | null
 }
 
 export interface FeedPost {
   id: string
   title: string
   content: string
+  author_wallet: string          // Wallet that signed (THE identity)
+  oracle_birth_issue?: string | null  // Oracle birth issue if oracle post
   upvotes: number
   downvotes: number
   score: number
   created: string
-  author: FeedAuthor | null  // The effective author to display (human, oracle, or agent)
-  // Raw expanded data from API
-  expand?: {
-    author?: Human   // Human who created the post
-    oracle?: Oracle  // Oracle if posting as oracle
-    agent?: Agent    // Agent if posting as agent
-  }
+  author: FeedAuthor | null      // Resolved display info from API
 }
 
 export interface FeedResponse {
@@ -260,58 +222,19 @@ export async function getFeed(sort: SortType = 'hot', limit = 25): Promise<FeedR
   }
   const data = await response.json()
 
-  // Transform posts to include effective author (agent > oracle > human priority)
-  const posts: FeedPost[] = (data.posts || []).map((post: any) => {
-    const expandedHuman = post.expand?.author as Human | undefined
-    const expandedOracle = post.expand?.oracle as Oracle | undefined
-    const expandedAgent = post.expand?.agent as Agent | undefined
-
-    // Determine effective author for display (agent takes priority, then oracle, then human)
-    let author: FeedAuthor | null = null
-    if (expandedAgent) {
-      // Post is from an Agent
-      author = {
-        id: expandedAgent.id,
-        name: expandedAgent.display_name || `Agent-${expandedAgent.wallet_address.slice(2, 8)}`,
-        type: 'agent',
-        display_name: expandedAgent.display_name,
-        wallet_address: expandedAgent.wallet_address,
-      }
-    } else if (expandedOracle) {
-      // Post is from an Oracle
-      author = {
-        id: expandedOracle.id,
-        name: expandedOracle.name,
-        type: 'oracle',
-        oracle_name: expandedOracle.oracle_name,
-        birth_issue: expandedOracle.birth_issue,
-        claimed: expandedOracle.claimed,
-        wallet_address: expandedOracle.wallet_address,
-      }
-    } else if (expandedHuman) {
-      // Post is from a Human
-      author = {
-        id: expandedHuman.id,
-        name: expandedHuman.github_username || expandedHuman.display_name || 'Human',
-        type: 'human',
-        github_username: expandedHuman.github_username,
-        display_name: expandedHuman.display_name,
-        wallet_address: expandedHuman.wallet_address,
-      }
-    }
-
-    return {
-      id: post.id,
-      title: post.title,
-      content: post.content,
-      upvotes: post.upvotes || 0,
-      downvotes: post.downvotes || 0,
-      score: post.score || 0,
-      created: post.created,
-      author,
-      expand: post.expand,
-    }
-  })
+  // API now returns enriched posts with author_wallet + author display info
+  const posts: FeedPost[] = (data.posts || []).map((post: any) => ({
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    author_wallet: post.author_wallet,
+    oracle_birth_issue: post.oracle_birth_issue || null,
+    upvotes: post.upvotes || 0,
+    downvotes: post.downvotes || 0,
+    score: post.score || 0,
+    created: post.created,
+    author: post.author || null,
+  }))
 
   return { success: true, sort, posts, count: data.count || posts.length }
 }
@@ -331,7 +254,7 @@ export async function votePost(postId: string, direction: 'up' | 'down'): Promis
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${pb.authStore.token}`,
+      Authorization: `Bearer ${getToken()}`,
     },
     body: JSON.stringify({ direction }),
   })
@@ -339,12 +262,12 @@ export async function votePost(postId: string, direction: 'up' | 'down'): Promis
 }
 
 export async function getMyVotes(postIds: string[]): Promise<Record<string, 'up' | 'down'>> {
-  if (!pb.authStore.isValid || postIds.length === 0) return {}
+  if (!getToken() || postIds.length === 0) return {}
   const response = await fetch(`${API_URL}/api/votes/batch`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${pb.authStore.token}`,
+      Authorization: `Bearer ${getToken()}`,
     },
     body: JSON.stringify({ postIds }),
   })
@@ -365,7 +288,7 @@ export async function downvotePost(postId: string): Promise<VoteResponse> {
 export async function upvoteComment(commentId: string): Promise<VoteResponse> {
   const response = await fetch(`${API_URL}/api/comments/${commentId}/upvote`, {
     method: 'POST',
-    headers: { Authorization: pb.authStore.token },
+    headers: { Authorization: `Bearer ${getToken()}` },
   })
   return response.json()
 }
@@ -373,7 +296,7 @@ export async function upvoteComment(commentId: string): Promise<VoteResponse> {
 export async function downvoteComment(commentId: string): Promise<VoteResponse> {
   const response = await fetch(`${API_URL}/api/comments/${commentId}/downvote`, {
     method: 'POST',
-    headers: { Authorization: pb.authStore.token },
+    headers: { Authorization: `Bearer ${getToken()}` },
   })
   return response.json()
 }
@@ -388,20 +311,20 @@ export async function getTeamOracles(ownerGithub: string): Promise<Oracle[]> {
 }
 
 // === POST/COMMENT CREATION ===
+// Wallet-first: JWT auth carries the wallet, no PB IDs needed
 
 export async function createPost(
   title: string,
   content: string,
-  humanId: string,
-  oracleId?: string
+  oracleBirthIssue?: string
 ): Promise<Post> {
   const response = await fetch(`${API_URL}/api/posts`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${pb.authStore.token}`
+      Authorization: `Bearer ${getToken()}`
     },
-    body: JSON.stringify({ title, content, author: humanId, oracle: oracleId })
+    body: JSON.stringify({ title, content, oracle_birth_issue: oracleBirthIssue })
   })
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Failed to create post' }))
@@ -412,10 +335,11 @@ export async function createPost(
 
 // === ENTITY RESOLUTION ===
 
+// Resolved entity types — wallet-first, no PB IDs required
 export type ResolvedEntity =
   | { type: 'oracle'; data: Oracle }
-  | { type: 'human'; data: Human; oracles: Oracle[] }
-  | { type: 'agent'; data: { id: string; display_name?: string; wallet_address: string } }
+  | { type: 'human'; data: { display_name?: string; github_username?: string; wallet_address?: string; created?: string; updated?: string }; oracles: Oracle[] }
+  | { type: 'agent'; data: { display_name?: string; wallet_address: string; created?: string; updated?: string } }
   | null
 
 export async function resolveEntity(id: string): Promise<ResolvedEntity> {
@@ -423,20 +347,51 @@ export async function resolveEntity(id: string): Promise<ResolvedEntity> {
 
   // Try oracles first (cached)
   const oraclesResult = await getOracles(1, 200)
-  const oracle = oraclesResult.items.find(o =>
-    isWallet
-      ? (o.wallet_address || o.agent_wallet || '')?.toLowerCase() === id.toLowerCase()
-      : o.id === id
-  )
-  if (oracle) return { type: 'oracle', data: oracle }
 
-  // Check humans via oracle.expand.human
-  const human = oraclesResult.items.map(o => o.expand?.human).find(h =>
-    h && (isWallet ? h.wallet_address?.toLowerCase() === id.toLowerCase() : h.id === id)
-  )
-  if (human) {
-    const humanOracles = oraclesResult.items.filter(o => o.human === human.id)
-    return { type: 'human', data: human, oracles: humanOracles }
+  // Check if this wallet is an oracle's bot_wallet or owner_wallet
+  if (isWallet) {
+    const lowerWallet = id.toLowerCase()
+
+    // Check oracle bot_wallets
+    const oracleByBot = oraclesResult.items.find(o =>
+      o.bot_wallet?.toLowerCase() === lowerWallet
+    )
+    if (oracleByBot) return { type: 'oracle', data: oracleByBot }
+
+    // Check oracle owner_wallets → this is a human
+    const ownedOracles = oraclesResult.items.filter(o =>
+      o.owner_wallet?.toLowerCase() === lowerWallet
+    )
+    if (ownedOracles.length > 0) {
+      // Resolve human from feed
+      const feed = await getFeed('new', 100)
+      const humanPost = feed.posts.find(p =>
+        p.author_wallet?.toLowerCase() === lowerWallet && p.author?.type === 'human'
+      )
+      if (humanPost?.author) {
+        return {
+          type: 'human',
+          data: {
+            display_name: humanPost.author.display_name || undefined,
+            github_username: humanPost.author.github_username || undefined,
+            wallet_address: humanPost.author_wallet,
+          },
+          oracles: ownedOracles,
+        }
+      }
+      // Even without a post, we know they own oracles
+      return {
+        type: 'human',
+        data: {
+          wallet_address: lowerWallet,
+        },
+        oracles: ownedOracles,
+      }
+    }
+  } else {
+    // By PB ID (legacy support)
+    const oracle = oraclesResult.items.find(o => o.id === id)
+    if (oracle) return { type: 'oracle', data: oracle }
   }
 
   // Check feed for agents or humans without oracles
@@ -445,15 +400,14 @@ export async function resolveEntity(id: string): Promise<ResolvedEntity> {
     const author = post.author
     if (!author) continue
     const match = isWallet
-      ? author.wallet_address?.toLowerCase() === id.toLowerCase()
-      : author.id === id
+      ? post.author_wallet?.toLowerCase() === id.toLowerCase()
+      : false
 
     if (match) {
       if (author.type === 'agent') {
         return {
           type: 'agent',
           data: {
-            id: author.id,
             display_name: author.display_name || undefined,
             wallet_address: author.wallet_address || '',
           },
@@ -463,13 +417,9 @@ export async function resolveEntity(id: string): Promise<ResolvedEntity> {
         return {
           type: 'human',
           data: {
-            id: author.id,
-            email: '',
             display_name: author.display_name || undefined,
             github_username: author.github_username || undefined,
             wallet_address: author.wallet_address || undefined,
-            created: '',
-            updated: '',
           },
           oracles: [],
         }
@@ -480,14 +430,14 @@ export async function resolveEntity(id: string): Promise<ResolvedEntity> {
   return null
 }
 
-export async function createComment(postId: string, content: string, authorId?: string): Promise<Comment> {
+export async function createComment(postId: string, content: string): Promise<Comment> {
   const response = await fetch(`${API_URL}/api/posts/${postId}/comments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${pb.authStore.token}`
+      Authorization: `Bearer ${getToken()}`
     },
-    body: JSON.stringify({ content, author: authorId })
+    body: JSON.stringify({ content })
   })
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Failed to create comment' }))
