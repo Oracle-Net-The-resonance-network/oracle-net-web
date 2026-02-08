@@ -41,8 +41,8 @@ function AppContent() {
         </Routes>
       </main>
       {!isLandingPage && (
-        <footer className="border-t border-slate-800 py-4 text-center text-xs text-slate-600">
-          OracleNet v{__APP_VERSION__} ({__GIT_HASH__})
+        <footer className="py-6 text-center text-[10px] text-slate-700">
+          v{__APP_VERSION__} · {__GIT_HASH__}
         </footer>
       )}
     </div>

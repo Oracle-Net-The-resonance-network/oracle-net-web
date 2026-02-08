@@ -1,16 +1,34 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Navigate, Link } from 'react-router-dom'
-import { Loader2, ExternalLink, Shield, ShieldOff, Github, Wallet, Zap, FileText, PenLine, Bot } from 'lucide-react'
+import { Loader2, ExternalLink, Shield, ShieldOff, Github, Wallet, Zap, FileText, PenLine, Bot, Send, LogOut, Check } from 'lucide-react'
+import { useDisconnect } from 'wagmi'
 import { getFeed, getMyVotes, type FeedPost, type Oracle } from '@/lib/pocketbase'
 import { useAuth } from '@/contexts/AuthContext'
 import { PostCard } from '@/components/PostCard'
+import { CreatePost } from '@/components/CreatePost'
 import { getAvatarGradient } from '@/lib/utils'
 
 export function Profile() {
-  const { human, oracles, isLoading: authLoading, isAuthenticated } = useAuth()
+  const { human, oracles, isLoading: authLoading, isAuthenticated, logout } = useAuth()
+  const { disconnect } = useDisconnect()
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [userVotes, setUserVotes] = useState<Record<string, 'up' | 'down'>>({})
   const [isLoading, setIsLoading] = useState(true)
+  const [composingOracle, setComposingOracle] = useState<Oracle | null>(null)
+  const [walletCopied, setWalletCopied] = useState(false)
+
+  const handleLogout = () => {
+    logout()
+    disconnect()
+  }
+
+  const copyWallet = () => {
+    if (human?.wallet_address) {
+      navigator.clipboard.writeText(human.wallet_address)
+      setWalletCopied(true)
+      setTimeout(() => setWalletCopied(false), 2000)
+    }
+  }
 
   // Calculate total karma from all owned oracles
   const totalKarma = oracles.reduce((sum, o) => sum + (o.karma || 0), 0)
@@ -29,10 +47,10 @@ export function Profile() {
       }
 
       // Fetch feed and filter by author_wallet matching our wallet
-      // This catches: human posts (signed by our wallet) and oracle posts
-      // where the oracle's owner_wallet matches (bot posts have different wallet)
+      // or posts tagged with a birth_issue of one of our oracles
       const feed = await getFeed('new', 100)
       const oracleWallets = new Set(oracles.map(o => o.bot_wallet?.toLowerCase()).filter(Boolean))
+      const oracleBirthIssues = new Set(oracles.map(o => o.birth_issue).filter(Boolean))
 
       const myPosts = feed.posts.filter(post => {
         const postWallet = post.author_wallet?.toLowerCase()
@@ -40,6 +58,8 @@ export function Profile() {
         if (postWallet === myWallet) return true
         // Oracle match: post signed by a bot wallet we own
         if (postWallet && oracleWallets.has(postWallet)) return true
+        // Oracle birth issue match: post tagged with our oracle
+        if (post.oracle_birth_issue && oracleBirthIssues.has(post.oracle_birth_issue)) return true
         return false
       })
 
@@ -135,10 +155,14 @@ export function Profile() {
               {/* Meta Links */}
               <div className="mt-4 flex flex-wrap items-center justify-center sm:justify-start gap-4 text-sm">
                 {human?.wallet_address && (
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <Wallet className="h-4 w-4" />
-                    <span className="font-mono">{human.wallet_address.slice(0, 6)}...{human.wallet_address.slice(-4)}</span>
-                  </div>
+                  <button
+                    onClick={copyWallet}
+                    className="flex items-center gap-1.5 text-slate-500 hover:text-emerald-400 transition-colors cursor-pointer"
+                    title="Copy wallet address"
+                  >
+                    {walletCopied ? <Check className="h-4 w-4 text-emerald-400" /> : <Wallet className="h-4 w-4" />}
+                    <span className="font-mono">{walletCopied ? 'Copied!' : `${human.wallet_address.slice(0, 6)}...${human.wallet_address.slice(-4)}`}</span>
+                  </button>
                 )}
                 {human?.github_username && (
                   <a
@@ -178,6 +202,17 @@ export function Profile() {
                 Posts
               </div>
             </div>
+          </div>
+
+          {/* Logout */}
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
           </div>
 
           {/* Verification Status */}
@@ -236,9 +271,23 @@ export function Profile() {
           </div>
           <div className="grid gap-3">
             {oracles.map((oracle) => (
-              <OracleCard key={oracle.id} oracle={oracle} />
+              <OracleCard
+                key={oracle.id}
+                oracle={oracle}
+                onPostAs={() => setComposingOracle(composingOracle?.id === oracle.id ? null : oracle)}
+                isComposing={composingOracle?.id === oracle.id}
+              />
             ))}
           </div>
+          {/* Inline oracle post composer */}
+          {composingOracle && (
+            <div className="mt-3">
+              <CreatePost
+                defaultOracle={composingOracle}
+                onPostCreated={() => { setComposingOracle(null); fetchMyPosts() }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -247,7 +296,7 @@ export function Profile() {
         <h2 className="text-xl font-bold text-white">All Posts</h2>
         {canPost && posts.length > 0 && (
           <Link
-            to="/"
+            to="/feed"
             className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-600 transition-colors"
           >
             <PenLine className="h-4 w-4" />
@@ -288,12 +337,12 @@ export function Profile() {
   )
 }
 
-// Oracle card component
-function OracleCard({ oracle }: { oracle: Oracle }) {
+// Oracle card component with "Post as" action
+function OracleCard({ oracle, onPostAs, isComposing }: { oracle: Oracle; onPostAs?: () => void; isComposing?: boolean }) {
   const karmaColor = (oracle.karma || 0) >= 100 ? 'text-emerald-400' : (oracle.karma || 0) >= 10 ? 'text-orange-400' : 'text-slate-400'
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 hover:border-purple-500/50 transition-colors">
+    <div className={`rounded-xl border bg-slate-900/50 p-4 transition-colors ${isComposing ? 'border-purple-500/50' : 'border-slate-800 hover:border-purple-500/50'}`}>
       <div className="flex items-center gap-4">
         <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${getAvatarGradient(oracle.name)} text-lg font-bold text-white`}>
           {oracle.name[0]?.toUpperCase() || '?'}
@@ -324,6 +373,19 @@ function OracleCard({ oracle }: { oracle: Oracle }) {
             <span className={karmaColor}>{oracle.karma || 0} karma</span>
           </div>
         </div>
+        {onPostAs && (
+          <button
+            onClick={onPostAs}
+            className={`shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              isComposing
+                ? 'bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30'
+                : 'text-slate-400 hover:bg-purple-500/10 hover:text-purple-400'
+            }`}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Post as
+          </button>
+        )}
       </div>
     </div>
   )

@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAccount, useConnect, useDisconnect, useSignMessage, useChainId } from 'wagmi'
-import { Loader2, CheckCircle, Plus, Trash2, Fingerprint, Copy, Check, ExternalLink, Shield, AlertCircle } from 'lucide-react'
+import { Loader2, CheckCircle, Fingerprint, Copy, Check, ExternalLink, Shield, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/Button'
-import { getMerkleRoot, type Assignment } from '@/lib/merkle'
 
 // API URL for all backend calls (GitHub proxy, verification, etc.)
 const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
@@ -11,7 +10,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { setToken } from '@/lib/pocketbase'
 import { checksumAddress } from '@/lib/utils'
 
-const STORAGE_KEY = 'oracle-identity-assignments'
 const BIRTH_ISSUE_KEY = 'oracle-identity-birth-issue'
 const ORACLE_NAME_KEY = 'oracle-identity-oracle-name'
 const AUTO_FILLED_NAME_KEY = 'oracle-identity-auto-filled-name'
@@ -26,6 +24,8 @@ export function Identity() {
   const { signMessageAsync, isPending: isSigning } = useSignMessage()
   const chainId = useChainId()
   const [searchParams] = useSearchParams()
+
+  const navigate = useNavigate()
 
   // Auth context for Human + Oracles data
   const { human, oracles, refreshAuth } = useAuth()
@@ -49,17 +49,8 @@ export function Identity() {
   const [verificationIssueData, setVerificationIssueData] = useState<{ title: string; author: string } | null>(null)
   const [isFetchingVerificationIssue, setIsFetchingVerificationIssue] = useState(false)
 
-  // Assignment state (for bot management - only shown when fully verified)
-  const [assignments, setAssignments] = useState<Assignment[]>([])
+  // Bot wallet (optional, from URL param or manual input)
   const [newBot, setNewBot] = useState(() => searchParams.get('bot') || '')
-  const [newOracle, setNewOracle] = useState('')
-  const [newIssue, setNewIssue] = useState('')
-  const [newIssueData, setNewIssueData] = useState<{ title: string; author: string } | null>(null)
-  const [isFetchingNewIssue, setIsFetchingNewIssue] = useState(false)
-  const [autoFilledBotName, setAutoFilledBotName] = useState<string | null>(null)
-  const [isIssueOwnedByUser, setIsIssueOwnedByUser] = useState(false)
-
-  const merkleRoot = getMerkleRoot(assignments)
 
   // Derived verification state
   // Human is verified if they have github_username
@@ -68,23 +59,6 @@ export function Identity() {
   const hasOracles = oracles.length > 0
   // Fully verified = has github AND at least one oracle
   const isFullyVerified = isGithubVerified && hasOracles
-
-  // Load saved assignments
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      try {
-        setAssignments(JSON.parse(saved))
-      } catch {}
-    }
-  }, [])
-
-  // Save assignments on change
-  useEffect(() => {
-    if (assignments.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(assignments))
-    }
-  }, [assignments])
 
   // Persist birth issue URL
   useEffect(() => {
@@ -201,6 +175,30 @@ export function Identity() {
     return `https://github.com/${DEFAULT_BIRTH_REPO}/issues/${input.trim()}`
   }
 
+  // Poll for verification completion (bot may verify from CLI)
+  // After user signs, poll refreshAuth every 3s to detect new oracle
+  const birthUrlForPoll = normalizeBirthIssueUrl(birthIssueUrl)
+  useEffect(() => {
+    if (!signedData || verifySuccess) return
+    const interval = setInterval(async () => {
+      await refreshAuth()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [signedData, verifySuccess, refreshAuth])
+
+  // Auto-redirect when oracle matching current birth issue appears
+  useEffect(() => {
+    if (!signedData || verifySuccess) return
+    const matched = oracles.find(o => o.birth_issue === birthUrlForPoll)
+    if (matched) {
+      setVerifySuccess({
+        oracle_name: matched.oracle_name || matched.name || oracleName,
+        github_username: human?.github_username || ''
+      })
+      setTimeout(() => navigate('/team'), 2000)
+    }
+  }, [oracles, birthUrlForPoll, signedData, verifySuccess]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fetch verification issue when URL changes
   useEffect(() => {
     const fetchVerificationIssue = async () => {
@@ -239,51 +237,6 @@ export function Identity() {
   }, [verificationIssueUrl])
 
   // Fetch bot birth issue when newIssue changes (for Assign Bots section)
-  useEffect(() => {
-    const fetchBotIssue = async () => {
-      if (!newIssue || !/^\d+$/.test(newIssue.trim())) {
-        setNewIssueData(null)
-        setIsIssueOwnedByUser(false)
-        return
-      }
-
-      const issueNumber = newIssue.trim()
-      setIsFetchingNewIssue(true)
-
-      try {
-        const [owner, repo] = DEFAULT_BIRTH_REPO.split('/')
-        const res = await fetch(`${API_URL}/api/github/issues/${owner}/${repo}/${issueNumber}`)
-        if (!res.ok) throw new Error('Failed to fetch')
-        const issue = await res.json()
-
-        const author = issue.author || ''
-        setNewIssueData({
-          title: issue.title || '',
-          author
-        })
-
-        // Validate ownership - birth issue author must match verified user's GitHub username
-        const isOwned = author.toLowerCase() === human?.github_username?.toLowerCase()
-        setIsIssueOwnedByUser(isOwned)
-
-        // Auto-fill oracle name if field is empty or was previously auto-filled
-        const extracted = extractOracleName(issue.title || '')
-        if (extracted && (!newOracle || newOracle === autoFilledBotName)) {
-          setNewOracle(extracted)
-          setAutoFilledBotName(extracted)
-        }
-      } catch {
-        setNewIssueData(null)
-        setIsIssueOwnedByUser(false)
-      } finally {
-        setIsFetchingNewIssue(false)
-      }
-    }
-
-    const timer = setTimeout(fetchBotIssue, 500)
-    return () => clearTimeout(timer)
-  }, [newIssue, human?.github_username]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // Convert verification issue input to full URL (handles both "4" and full URLs)
   const normalizeVerifyIssueUrl = (input: string) => {
     if (!input) return ''
@@ -300,14 +253,18 @@ export function Identity() {
   const getVerifyMessage = () => {
     if (!address || !birthIssueUrl || !oracleName) return ''
     const fullBirthUrl = normalizeBirthIssueUrl(birthIssueUrl)
-    return JSON.stringify({
+    const payload: Record<string, string> = {
       wallet: address,
       birth_issue: fullBirthUrl,
       oracle_name: oracleName.trim(),
       action: "verify_identity",
       timestamp: new Date().toISOString(),
       statement: "I am verifying my Oracle identity."
-    }, null, 2)
+    }
+    if (newBot.trim()) {
+      payload.bot_wallet = newBot.trim()
+    }
+    return JSON.stringify(payload, null, 2)
   }
 
   // Sign verification message
@@ -340,13 +297,14 @@ export function Identity() {
   const getVerifyIssueUrl = () => {
     if (!signedData || !address) return ''
     const title = encodeURIComponent(`Verify: ${oracleName.trim()} (${address.slice(0, 10)}...)`)
+    const botLine = newBot.trim() ? `\nBot Wallet: ${newBot.trim()}` : ''
     const body = encodeURIComponent(`### Oracle Identity Verification
 
 I am verifying my Oracle identity for OracleNet.
 
 **Oracle Name:** ${oracleName.trim()}
 **Wallet:** \`${address}\`
-**Birth Issue:** ${normalizeBirthIssueUrl(birthIssueUrl)}
+**Birth Issue:** ${normalizeBirthIssueUrl(birthIssueUrl)}${botLine}
 
 \`\`\`json
 ${getSignedBody()}
@@ -420,6 +378,9 @@ ${getSignedBody()}
         })
         setSignedData(null)
         setVerificationIssueUrl('')
+
+        // Auto-redirect to team page after success
+        setTimeout(() => navigate('/team'), 2000)
       }
     } catch (e: any) {
       setVerifyError(e.message || 'Network error')
@@ -440,74 +401,6 @@ ${getSignedBody()}
     setCopied(id)
     setTimeout(() => setCopied(null), 2000)
   }
-
-  // Add assignment — also saves bot wallet to backend
-  const handleAddAssignment = async () => {
-    if (!newBot.trim() || !newOracle.trim() || !newIssue.trim()) return
-    const issue = parseInt(newIssue)
-    if (isNaN(issue)) return
-
-    // Find the oracle record by matching birth issue
-    const birthUrl = `https://github.com/${DEFAULT_BIRTH_REPO}/issues/${issue}`
-    const matchedOracle = oracles.find(o => o.birth_issue === birthUrl)
-
-    // Save bot wallet to backend if we found the oracle and have a connected wallet
-    if (matchedOracle && address && signMessageAsync) {
-      try {
-        // Create SIWE message for auth
-        const domain = window.location.host
-        const origin = window.location.origin
-        const siweMessage = `${domain} wants you to sign in with your Ethereum account:\n${address}\n\nAssign bot wallet to oracle\n\nURI: ${origin}\nVersion: 1\nChain ID: 1\nNonce: ${Date.now()}\nIssued At: ${new Date().toISOString()}`
-        const sig = await signMessageAsync({ message: siweMessage })
-
-        await fetch(`${API_URL}/api/oracles/${matchedOracle.id}/wallet`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            wallet_address: newBot.trim(),
-            message: siweMessage,
-            signature: sig,
-          }),
-        })
-      } catch (e) {
-        console.error('Failed to save bot wallet to backend:', e)
-        // Continue with local assignment even if backend call fails
-      }
-    }
-
-    setAssignments(prev => [...prev, {
-      bot: newBot.trim(),
-      oracle: newOracle.trim(),
-      issue
-    }])
-    setNewBot('')
-    setNewOracle('')
-    setNewIssue('')
-  }
-
-  // Remove assignment
-  const handleRemoveAssignment = (index: number) => {
-    setAssignments(prev => prev.filter((_, i) => i !== index))
-  }
-
-  // Generate bot prompts
-  const requestAuthPrompt = assignments.length > 0 && assignments[0]
-    ? `# Secure Authorization (No Private Key Sharing)
-# Run this from your bot:
-bun scripts/oraclenet.ts request-auth "${assignments[0].oracle}" ${assignments[0].issue}
-
-# Then:
-# 1. Open the URL shown in browser
-# 2. Connect MetaMask & sign
-# 3. Copy the auth code back to terminal` : ''
-
-  const assignPrompt = address && assignments.length > 0 ? `# Legacy Merkle Flow
-cat > assignments.json << 'EOF'
-${JSON.stringify(assignments, null, 2)}
-EOF
-
-export ORACLE_HUMAN_PK=<my-private-key>
-bun scripts/oraclenet.ts assign` : ''
 
   // Claim params from URL
   const claimBirth = searchParams.get('birth')
@@ -719,7 +612,7 @@ bun scripts/oraclenet.ts assign` : ''
               Verified as <span className="font-medium text-emerald-300">@{verifySuccess.github_username}</span>
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              Sign out and sign back in to see your verified profile.
+              Redirecting to your oracles...
             </p>
           </div>
         )}
@@ -806,6 +699,23 @@ bun scripts/oraclenet.ts assign` : ''
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     This is the name that will identify your Oracle on the network
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">
+                    Bot Wallet Address
+                    <span className="ml-2 text-xs text-slate-600">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="0x... (leave blank if no bot)"
+                    value={newBot}
+                    onChange={(e) => setNewBot(e.target.value)}
+                    className="w-full rounded-lg bg-slate-800 px-4 py-3 text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none transition-all font-mono text-sm"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    If your oracle has an AI bot, enter its wallet here. It will be included in the verification issue.
                   </p>
                 </div>
 
@@ -967,200 +877,6 @@ After running, paste the issue URL in the field below.`, 'ghCmd')}
           </div>
         )}
 
-        {/* Bot Management Section - Only shown when fully verified */}
-        {isFullyVerified && (
-          <>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
-              <h2 className="mb-4 text-lg font-bold text-slate-100">Assign Bots (Optional)</h2>
-              <p className="text-sm text-slate-400 mb-4">
-                If you have AI bots that need Oracle identities, you can assign them here.
-              </p>
-
-              {/* Assignment List */}
-              {assignments.length > 0 && (
-                <div className="mb-4 space-y-2">
-                  {assignments.map((a, i) => {
-                    const birthUrl = `https://github.com/${DEFAULT_BIRTH_REPO}/issues/${a.issue}`
-                    const matchedOracle = oracles.find(o => o.birth_issue === birthUrl)
-                    const isWalletVerified = matchedOracle?.wallet_verified
-                    return (
-                      <div key={i} className="flex items-center justify-between rounded-lg bg-slate-800 px-4 py-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-slate-200">{a.oracle}</span>
-                            {matchedOracle?.bot_wallet && (
-                              isWalletVerified ? (
-                                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-400">
-                                  <Shield className="h-3 w-3" />
-                                  Wallet Verified
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400">
-                                  Pending
-                                </span>
-                              )
-                            )}
-                          </div>
-                          <div className="text-xs text-slate-500 font-mono">
-                            {a.bot.slice(0, 10)}... Issue #{a.issue}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveAssignment(i)}
-                          className="rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-red-400"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Add Assignment Form */}
-              <div className="space-y-4 rounded-lg border border-slate-700 bg-slate-800/50 p-4">
-                {/* Birth Issue - First (triggers auto-fill) */}
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1.5">Birth Issue #</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="121 or full URL"
-                      value={newIssue}
-                      onChange={(e) => setNewIssue(e.target.value)}
-                      className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none"
-                    />
-                    {isFetchingNewIssue && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-slate-500" />
-                    )}
-                  </div>
-                  {newIssueData && (
-                    <div className="mt-1.5 space-y-1">
-                      <div className="text-xs text-slate-500">
-                        <a
-                          href={`https://github.com/${DEFAULT_BIRTH_REPO}/issues/${newIssue.trim()}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-slate-400 hover:text-orange-300 transition-colors"
-                        >
-                          {newIssueData.title}
-                        </a>
-                        <span className="mx-1">by</span>
-                        <a
-                          href={`https://github.com/${newIssueData.author}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={isIssueOwnedByUser ? "text-emerald-400 hover:text-emerald-300 transition-colors" : "text-red-400 hover:text-red-300 transition-colors"}
-                        >
-                          @{newIssueData.author}
-                        </a>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Oracle Name - Auto-filled from birth issue */}
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1.5">
-                    Oracle Name
-                    {newOracle === autoFilledBotName && autoFilledBotName && (
-                      <span className="ml-2 text-emerald-500">(auto-filled)</span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g., SHRIMP Oracle"
-                    value={newOracle}
-                    disabled={!isIssueOwnedByUser}
-                    onChange={(e) => {
-                      setNewOracle(e.target.value)
-                      if (e.target.value !== autoFilledBotName) {
-                        setAutoFilledBotName(null)
-                      }
-                    }}
-                    className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                </div>
-
-                {/* Bot Wallet */}
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1.5">Bot Wallet Address</label>
-                  <input
-                    type="text"
-                    placeholder="0x..."
-                    value={newBot}
-                    disabled={!isIssueOwnedByUser}
-                    onChange={(e) => setNewBot(e.target.value)}
-                    className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 ring-1 ring-slate-700 focus:ring-2 focus:ring-orange-500 outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                </div>
-
-                {/* Add Button */}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleAddAssignment}
-                  disabled={!newBot.trim() || !newOracle.trim() || !newIssue.trim() || !isIssueOwnedByUser}
-                  className="w-full"
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  Add Bot
-                </Button>
-              </div>
-
-              {/* Bot Prompts */}
-              {assignments.length > 0 && (
-                <>
-                  <div className="mt-4 rounded-lg bg-slate-800 p-4">
-                    <div className="text-xs text-slate-500">Merkle Root</div>
-                    <div className="mt-1 break-all font-mono text-sm text-slate-300">
-                      {merkleRoot}
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="mb-2 text-sm text-slate-400">Copy for your AI assistant:</p>
-                    <div className="relative">
-                      <pre className="overflow-auto rounded-lg bg-slate-800 p-4 text-xs text-slate-300 whitespace-pre-wrap">
-                        {assignPrompt}
-                      </pre>
-                      <button
-                        onClick={() => copyToClipboard(assignPrompt, 'assign')}
-                        className="absolute right-2 top-2 rounded bg-slate-700 p-1.5 text-slate-400 hover:bg-slate-600 hover:text-slate-200"
-                      >
-                        {copied === 'assign' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Secure Flow - Recommended */}
-            {assignments.length > 0 && (
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-6">
-                <h2 className="mb-2 flex items-center gap-2 text-lg font-bold text-emerald-400">
-                  <CheckCircle className="h-5 w-5" />
-                  Secure Flow (Recommended)
-                </h2>
-                <p className="mb-4 text-sm text-slate-400">
-                  No private key sharing! Bot creates request, you sign in browser.
-                </p>
-                <div className="relative">
-                  <pre className="overflow-auto rounded-lg bg-slate-800 p-4 text-xs text-slate-300 whitespace-pre-wrap">
-                    {requestAuthPrompt}
-                  </pre>
-                  <button
-                    onClick={() => copyToClipboard(requestAuthPrompt, 'requestAuth')}
-                    className="absolute right-2 top-2 rounded bg-slate-700 p-1.5 text-slate-400 hover:bg-slate-600 hover:text-slate-200"
-                  >
-                    {copied === 'requestAuth' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
       </div>
     </div>
   )
