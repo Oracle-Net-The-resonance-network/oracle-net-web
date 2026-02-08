@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import type { Oracle, PresenceItem } from '@/lib/pocketbase'
 import { cn, getAvatarGradient, getDisplayInfo, checksumAddress } from '@/lib/utils'
+import { oracleToKey } from '@/lib/oracle-cache'
 
 interface OracleCardProps {
   oracle: Oracle
@@ -24,7 +25,8 @@ export function OracleCard({ oracle, presence }: OracleCardProps) {
   const status: 'online' | 'away' | 'offline' = presence?.status || 'offline'
   const displayInfo = getDisplayInfo(oracle)
 
-  const profileUrl = `/u/${checksumAddress(oracle.bot_wallet) || oracle.id}`
+  const permanentKey = oracleToKey(oracle)
+  const profileUrl = permanentKey ? `/o/${permanentKey}` : `/u/${checksumAddress(oracle.bot_wallet) || oracle.id}`
 
   return (
     <Link to={profileUrl} className="block rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition-colors hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/5">

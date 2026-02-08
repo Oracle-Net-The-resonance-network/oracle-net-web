@@ -7,7 +7,7 @@ import { Button } from '@/components/Button'
 // API URL for all backend calls (GitHub proxy, verification, etc.)
 const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 import { useAuth } from '@/contexts/AuthContext'
-import { setToken } from '@/lib/pocketbase'
+import { setToken, getOracles } from '@/lib/pocketbase'
 import { checksumAddress } from '@/lib/utils'
 
 const BIRTH_ISSUE_KEY = 'oracle-identity-birth-issue'
@@ -176,17 +176,29 @@ export function Identity() {
   }
 
   // Poll for verification completion (bot may verify from CLI)
-  // After user signs, poll refreshAuth every 3s to detect new oracle
+  // After user signs, poll oracle list every 3s to detect new oracle
+  // Uses public API (no auth needed) so it works even when CLI did the verification
   const birthUrlForPoll = normalizeBirthIssueUrl(birthIssueUrl)
   useEffect(() => {
     if (!signedData || verifySuccess) return
     const interval = setInterval(async () => {
       await refreshAuth()
+      // Also check public oracle list (works even without JWT)
+      const result = await getOracles(1, 200)
+      const matched = result.items.find(o => o.birth_issue === birthUrlForPoll)
+      if (matched) {
+        setVerifySuccess({
+          oracle_name: matched.oracle_name || matched.name || oracleName,
+          github_username: human?.github_username || ''
+        })
+        const dest = matched.bot_wallet ? `/o/${matched.bot_wallet.toLowerCase()}` : '/team'
+        setTimeout(() => navigate(dest), 2000)
+      }
     }, 3000)
     return () => clearInterval(interval)
-  }, [signedData, verifySuccess, refreshAuth])
+  }, [signedData, verifySuccess, refreshAuth, birthUrlForPoll, oracleName, human, navigate])
 
-  // Auto-redirect when oracle matching current birth issue appears
+  // Auto-redirect when oracle matching current birth issue appears (from auth context)
   useEffect(() => {
     if (!signedData || verifySuccess) return
     const matched = oracles.find(o => o.birth_issue === birthUrlForPoll)
@@ -195,7 +207,8 @@ export function Identity() {
         oracle_name: matched.oracle_name || matched.name || oracleName,
         github_username: human?.github_username || ''
       })
-      setTimeout(() => navigate('/team'), 2000)
+      const dest = matched.bot_wallet ? `/o/${matched.bot_wallet.toLowerCase()}` : '/team'
+      setTimeout(() => navigate(dest), 2000)
     }
   }, [oracles, birthUrlForPoll, signedData, verifySuccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -318,7 +331,6 @@ ${getSignedBody()}
     setIsVerifying(true)
     setVerifyError(null)
 
-    const fullBirthUrl = normalizeBirthIssueUrl(birthIssueUrl)
     const fullVerifyUrl = normalizeVerifyIssueUrl(verificationIssueUrl)
 
     try {
@@ -333,13 +345,12 @@ ${getSignedBody()}
       const siweSig = await signMessageAsync({ message: siweMsg })
 
       // Use Oracle Universe API for GitHub verification
+      // Only verificationIssueUrl required — API extracts birth_issue, oracle_name, wallet from issue body
       const res = await fetch(`${API_URL}/api/auth/verify-identity`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           verificationIssueUrl: fullVerifyUrl,
-          birthIssueUrl: fullBirthUrl,
-          oracleName: oracleName.trim(),
           siweMessage: siweMsg,
           siweSignature: siweSig,
         })
@@ -379,8 +390,11 @@ ${getSignedBody()}
         setSignedData(null)
         setVerificationIssueUrl('')
 
-        // Auto-redirect to team page after success
-        setTimeout(() => navigate('/team'), 2000)
+        // Redirect to permanent oracle URL
+        // After verify, find the newly created oracle's bot_wallet from refreshed oracles
+        const freshOracle = oracles.find(o => o.birth_issue === normalizeBirthIssueUrl(birthIssueUrl))
+        const dest = freshOracle?.bot_wallet ? `/o/${freshOracle.bot_wallet.toLowerCase()}` : '/team'
+        setTimeout(() => navigate(dest), 2000)
       }
     } catch (e: any) {
       setVerifyError(e.message || 'Network error')
@@ -529,7 +543,7 @@ ${getSignedBody()}
             </div>
             <div className="mt-3 flex gap-2">
               <Link
-                to={`/u/${checksumAddress(alreadyClaimed.bot_wallet) || checksumAddress(alreadyClaimed.owner_wallet) || alreadyClaimed.id}`}
+                to={alreadyClaimed.bot_wallet ? `/o/${alreadyClaimed.bot_wallet.toLowerCase()}` : `/u/${checksumAddress(alreadyClaimed.owner_wallet) || alreadyClaimed.id}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 text-xs text-purple-300 hover:bg-purple-500/20 transition-colors"
               >
                 View Profile
@@ -581,17 +595,20 @@ ${getSignedBody()}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {oracles.map(o => (
-                <Link
-                  key={o.id}
-                  to={`/u/${checksumAddress(o.bot_wallet) || checksumAddress(o.owner_wallet) || o.id}`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 text-xs text-purple-300 hover:bg-purple-500/20 transition-colors"
-                >
-                  <span className="font-medium">{o.oracle_name || o.name}</span>
-                  <span className="text-purple-400/60">·</span>
-                  <span className="text-purple-400/60">#{o.birth_issue?.match(/\/issues\/(\d+)/)?.[1] || '?'}</span>
-                </Link>
-              ))}
+              {oracles.map(o => {
+                const oracleUrl = o.bot_wallet ? `/o/${o.bot_wallet.toLowerCase()}` : `/u/${checksumAddress(o.owner_wallet) || o.id}`
+                return (
+                  <Link
+                    key={o.id}
+                    to={oracleUrl}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 text-xs text-purple-300 hover:bg-purple-500/20 transition-colors"
+                  >
+                    <span className="font-medium">{o.oracle_name || o.name}</span>
+                    <span className="text-purple-400/60">·</span>
+                    <span className="text-purple-400/60">#{o.birth_issue?.match(/\/issues\/(\d+)/)?.[1] || '?'}</span>
+                  </Link>
+                )
+              })}
             </div>
           </div>
         )}

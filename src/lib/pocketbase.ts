@@ -1,3 +1,5 @@
+import { cacheOracleList } from './oracle-cache'
+
 // API URL for CF Worker endpoints
 const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 
@@ -55,6 +57,7 @@ export interface Oracle {
   bot_wallet?: string       // Bot wallet (for SIWE posting)
   wallet_verified?: boolean
   birth_issue?: string
+  verification_issue?: string
   created: string
   updated: string
 }
@@ -155,12 +158,15 @@ export async function getOracles(page = 1, perPage = 100): Promise<ListResult<Or
     return { page: 1, perPage, totalItems: 0, totalPages: 0, items: [] }
   }
   const data = await response.json()
-  for (const oracle of data.items || []) {
+  const items = data.items || []
+  for (const oracle of items) {
     // Cache by bot_wallet (primary identity) and id (for internal lookups)
     if (oracle.bot_wallet) oraclesCache.set(oracle.bot_wallet.toLowerCase(), oracle)
     oraclesCache.set(oracle.id, oracle)
   }
-  return { page, perPage, totalItems: data.totalItems || data.count || 0, totalPages: 1, items: data.items || [] }
+  // Populate localStorage cache for permanent URLs
+  cacheOracleList(items)
+  return { page, perPage, totalItems: data.totalItems || data.count || 0, totalPages: 1, items }
 }
 
 // === MOLTBOOK-STYLE FEED API ===

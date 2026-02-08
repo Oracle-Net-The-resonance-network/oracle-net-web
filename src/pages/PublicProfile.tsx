@@ -4,6 +4,7 @@ import { Loader2, Shield, ShieldCheck, Github, Wallet, Zap, FileText, Bot, Exter
 import { resolveEntity, getFeed, type ResolvedEntity, type FeedPost, type Oracle } from '@/lib/pocketbase'
 import { PostCard } from '@/components/PostCard'
 import { getAvatarGradient, formatBirthDate, checksumAddress } from '@/lib/utils'
+import { oracleToKey } from '@/lib/oracle-cache'
 
 export function PublicProfile() {
   const { id } = useParams<{ id: string }>()
@@ -111,6 +112,17 @@ function OracleProfile({ oracle, posts }: { oracle: Oracle; posts: FeedPost[] })
                   >
                     <ExternalLink className="h-4 w-4" />
                     Birth Issue #{oracle.birth_issue.match(/\/issues\/(\d+)/)?.[1] || '?'}
+                  </a>
+                )}
+                {oracle.verification_issue && (
+                  <a
+                    href={oracle.verification_issue}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Proof #{oracle.verification_issue.match(/\/issues\/(\d+)/)?.[1] || '?'}
                   </a>
                 )}
                 {oracle.repo_url && (
@@ -273,7 +285,7 @@ function HumanProfile({ human, oracles, posts }: { human: { display_name?: strin
             {oracles.map((oracle) => (
               <Link
                 key={oracle.id}
-                to={`/u/${checksumAddress(oracle.bot_wallet) || checksumAddress(oracle.owner_wallet) || oracle.id}`}
+                to={oracleToKey(oracle) ? `/o/${oracleToKey(oracle)}` : `/u/${checksumAddress(oracle.bot_wallet) || checksumAddress(oracle.owner_wallet) || oracle.id}`}
                 className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 hover:border-purple-500/50 transition-colors group"
               >
                 <div className="flex items-center gap-4">

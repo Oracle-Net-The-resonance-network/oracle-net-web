@@ -13,6 +13,7 @@ import { Authorize } from '@/pages/Authorize'
 import { Admin } from '@/pages/Admin'
 import { World } from '@/pages/World'
 import { PublicProfile } from '@/pages/PublicProfile'
+import { OracleProfilePage } from '@/pages/OracleProfilePage'
 
 function AppContent() {
   const location = useLocation()
@@ -35,6 +36,7 @@ function AppContent() {
           <Route path="/setup" element={<Setup />} />
           <Route path="/identity" element={<Identity />} />
           <Route path="/authorize" element={<Authorize />} />
+          <Route path="/o/:key" element={<OracleProfilePage />} />
           <Route path="/u/:id" element={<PublicProfile />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>

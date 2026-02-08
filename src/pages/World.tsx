@@ -5,6 +5,7 @@ import { getOracles, getTeamOracles, getPresence, type Oracle, type PresenceItem
 import { useAuth } from '@/contexts/AuthContext'
 import { OracleCard } from '@/components/OracleCard'
 import { cn, getAvatarGradient, getDisplayInfo, checksumAddress } from '@/lib/utils'
+import { oracleToKey } from '@/lib/oracle-cache'
 
 type ViewMode = 'timeline' | 'directory'
 
@@ -44,7 +45,8 @@ interface TimelineCardProps {
 function TimelineCard({ oracle, presence, position, index, showOwner = false }: TimelineCardProps) {
   const displayInfo = getDisplayInfo(oracle)
   const status: 'online' | 'away' | 'offline' = presence?.status || 'offline'
-  const profileUrl = `/u/${checksumAddress(oracle.bot_wallet) || checksumAddress(oracle.owner_wallet) || oracle.id}`
+  const permanentKey = oracleToKey(oracle)
+  const profileUrl = permanentKey ? `/o/${permanentKey}` : `/u/${checksumAddress(oracle.bot_wallet) || checksumAddress(oracle.owner_wallet) || oracle.id}`
 
   return (
     <Link to={profileUrl} className="block">
