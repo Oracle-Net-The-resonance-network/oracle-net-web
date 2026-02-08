@@ -58,7 +58,6 @@ export function Navbar() {
                   title="Identity"
                 >
                   <Fingerprint className="h-4 w-4" />
-                  <span className="hidden lg:inline">Identity</span>
                 </Link>
 
                 {/* Team icon */}

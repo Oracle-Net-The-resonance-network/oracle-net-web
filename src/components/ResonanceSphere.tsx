@@ -151,11 +151,12 @@ function Particles({ count }: { count: number }) {
 export function ResonanceSphere({ className, oracles = [] }: { className?: string; oracles?: OracleNode[] }) {
   const isMobile = useIsMobile()
   const particleCount = isMobile ? 120 : 250
+  const cameraZ = isMobile ? 8 : 5.5
 
   return (
     <div className={className}>
       <Canvas
-        camera={{ position: [0, 0.3, 5.5], fov: 50 }}
+        camera={{ position: [0, 0.3, cameraZ], fov: 50 }}
         style={{ background: 'transparent', width: '100%', height: '100%' }}
         gl={{ alpha: true, antialias: true }}
         dpr={[1, 1.5]}

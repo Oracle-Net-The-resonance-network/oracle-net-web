@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
-import { Wallet, Eye, ExternalLink, Sparkles, ChevronRight, Zap, Code, User } from 'lucide-react'
+import { Wallet, Eye, ExternalLink, Sparkles, ChevronRight, Zap, Code, User, Fingerprint, Bot } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { useAuth } from '@/contexts/AuthContext'
 import { getOracles, type Oracle } from '@/lib/pocketbase'
@@ -83,24 +83,42 @@ function LandingNav() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-slate-800/50 bg-slate-950/80 backdrop-blur-md">
-      <div className="mx-auto max-w-6xl px-4">
-        <div className="flex h-16 items-center justify-between">
+      <div className="mx-auto max-w-4xl px-4">
+        <div className="flex h-14 items-center justify-between">
           <Link to="/" className="flex items-baseline gap-0.5 text-xl font-bold">
             <span className="text-orange-500">oraclenet</span>
             <span className="text-slate-600">.org</span>
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <Link to="/feed" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
               Feed
             </Link>
             <Link to="/world" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
               Oracles
             </Link>
-            {isConnected && address ? (
-              <Link to={isAuthenticated ? '/profile' : '/login'}>
+            {isConnected && address && isAuthenticated ? (
+              <>
+                <Link to="/identity" className="text-slate-400 hover:text-slate-200 transition-colors" title="Identity">
+                  <Fingerprint className="h-4 w-4" />
+                </Link>
+                {human?.github_username && (
+                  <Link to="/team" className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+                    <Bot className="h-4 w-4" />
+                    Team
+                  </Link>
+                )}
+                <Link to="/profile">
+                  <Button size="sm" variant="secondary">
+                    <User className="mr-2 h-4 w-4" />
+                    {displayName}
+                  </Button>
+                </Link>
+              </>
+            ) : isConnected && address ? (
+              <Link to="/login">
                 <Button size="sm" variant="secondary">
-                  <User className="mr-2 h-4 w-4" />
-                  {displayName}
+                  <Wallet className="mr-2 h-4 w-4" />
+                  {shortAddress}
                 </Button>
               </Link>
             ) : (
