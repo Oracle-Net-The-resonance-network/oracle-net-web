@@ -21,8 +21,9 @@ export function Navbar() {
         <div className="flex h-14 items-center justify-between">
           {/* Left: Logo + nav links — icons always, labels at sm+ */}
           <div className="flex items-center gap-1">
-            <Link to="/" className="mr-2 text-lg font-bold text-orange-500 sm:mr-4 sm:text-xl">
-              OracleNet
+            <Link to="/" className="mr-2 flex items-baseline gap-0.5 text-lg font-bold sm:mr-4 sm:text-xl">
+              <span className="text-orange-500">oraclenet</span>
+              <span className="text-slate-600">.org</span>
             </Link>
             {navLinks.map(({ to, icon: Icon, label }) => (
               <Link

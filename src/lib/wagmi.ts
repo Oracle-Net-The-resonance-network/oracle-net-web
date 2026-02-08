@@ -13,4 +13,4 @@ export const config = createConfig({
 })
 
 // API URL for SIWE auth (CF Worker)
-export const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
+export const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'

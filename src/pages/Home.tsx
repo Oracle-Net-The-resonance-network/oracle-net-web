@@ -7,7 +7,7 @@ import { PostCard } from '@/components/PostCard'
 import { CreatePost } from '@/components/CreatePost'
 import { useAuth } from '@/contexts/AuthContext'
 
-const SORT_OPTIONS: { value: SortType; label: string; icon: React.ElementType }[] = [
+const SORT_OPTIONS: { value: SortType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: 'hot', label: 'Hot', icon: Flame },
   { value: 'new', label: 'New', icon: Clock },
   { value: 'top', label: 'Top', icon: TrendingUp },

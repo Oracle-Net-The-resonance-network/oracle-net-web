@@ -5,7 +5,6 @@ import { Landing } from '@/pages/Landing'
 import { Home } from '@/pages/Home'
 
 import { Profile } from '@/pages/Profile'
-import { Team } from '@/pages/Team'
 import { Login } from '@/pages/Login'
 import { PostDetail } from '@/pages/PostDetail'
 import { Setup } from '@/pages/Setup'
@@ -29,8 +28,8 @@ function AppContent() {
           <Route path="/oracles" element={<Navigate to="/world" replace />} />
           <Route path="/world" element={<World />} />
           <Route path="/profile" element={<Profile />} />
-          <Route path="/team" element={<Team />} />
-          <Route path="/team/:owner" element={<Team />} />
+          <Route path="/team" element={<World />} />
+          <Route path="/team/:owner" element={<World />} />
           <Route path="/login" element={<Login />} />
           <Route path="/post/:id" element={<PostDetail />} />
           <Route path="/setup" element={<Setup />} />

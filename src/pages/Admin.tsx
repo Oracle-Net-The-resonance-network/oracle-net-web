@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 // PocketBase URL for direct collection access
 const PB_URL = 'https://jellyfish-app-xml6o.ondigitalocean.app'
 // CF Worker API
-const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 
 interface Settings {
   allow_agent_registration: boolean

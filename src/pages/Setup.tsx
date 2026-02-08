@@ -41,7 +41,7 @@ function Step({
 }: { 
   number: number
   title: string
-  icon: React.ElementType
+  icon: React.ComponentType<{ className?: string }>
   children: React.ReactNode 
 }) {
   return (

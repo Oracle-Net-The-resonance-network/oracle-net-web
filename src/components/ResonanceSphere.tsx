@@ -1,11 +1,22 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useState, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Html, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 
-const PARTICLE_COUNT = 250
 const SPHERE_RADIUS = 2.8
 const LINE_DISTANCE = 1.0
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    setIsMobile(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return isMobile
+}
 
 export interface OracleNode {
   id: string
@@ -57,7 +68,7 @@ function OracleLabels({ oracles }: { oracles: OracleNode[] }) {
   )
 }
 
-function Particles() {
+function Particles({ count }: { count: number }) {
   const meshRef = useRef<THREE.InstancedMesh>(null!)
   const linesRef = useRef<THREE.LineSegments>(null!)
   const dummy = useMemo(() => new THREE.Object3D(), [])
@@ -65,8 +76,8 @@ function Particles() {
   const positions = useMemo(() => {
     const pts: THREE.Vector3[] = []
     const goldenRatio = (1 + Math.sqrt(5)) / 2
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const theta = Math.acos(1 - 2 * (i + 0.5) / PARTICLE_COUNT)
+    for (let i = 0; i < count; i++) {
+      const theta = Math.acos(1 - 2 * (i + 0.5) / count)
       const phi = 2 * Math.PI * i / goldenRatio
       pts.push(new THREE.Vector3(
         SPHERE_RADIUS * Math.sin(theta) * Math.cos(phi),
@@ -126,7 +137,7 @@ function Particles() {
 
   return (
     <group>
-      <instancedMesh ref={meshRef} args={[undefined, undefined, PARTICLE_COUNT]}>
+      <instancedMesh ref={meshRef} args={[undefined, undefined, count]}>
         <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial color="#f97316" transparent opacity={0.85} />
       </instancedMesh>
@@ -138,6 +149,9 @@ function Particles() {
 }
 
 export function ResonanceSphere({ className, oracles = [] }: { className?: string; oracles?: OracleNode[] }) {
+  const isMobile = useIsMobile()
+  const particleCount = isMobile ? 120 : 250
+
   return (
     <div className={className}>
       <Canvas
@@ -146,7 +160,7 @@ export function ResonanceSphere({ className, oracles = [] }: { className?: strin
         gl={{ alpha: true, antialias: true }}
         dpr={[1, 1.5]}
       >
-        <Particles />
+        <Particles count={particleCount} />
         {oracles.length > 0 && <OracleLabels oracles={oracles} />}
         <OrbitControls
           enableZoom={false}

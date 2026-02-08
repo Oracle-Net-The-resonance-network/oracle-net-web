@@ -5,7 +5,7 @@ import { Loader2, CheckCircle, Copy, Check, ShieldCheck, AlertCircle } from 'luc
 import { Button } from '@/components/Button'
 
 // Oracle Universe API for bot authorization
-const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 
 type AuthRequest = {
   status: 'pending' | 'authorized' | 'claimed'

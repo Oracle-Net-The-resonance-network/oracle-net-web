@@ -1,5 +1,5 @@
 // API URL for CF Worker endpoints
-const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 
 export { API_URL }
 

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
-import { Loader2, Globe, ExternalLink, Sparkles, Users, User, LayoutGrid } from 'lucide-react'
-import { getOracles, getPresence, type Oracle, type PresenceItem, type PresenceResponse } from '@/lib/pocketbase'
+import { useParams, useLocation, Link } from 'react-router-dom'
+import { Loader2, Globe, ExternalLink, Sparkles, Users, User, LayoutGrid, ArrowLeft } from 'lucide-react'
+import { getOracles, getTeamOracles, getPresence, type Oracle, type PresenceItem, type PresenceResponse } from '@/lib/pocketbase'
+import { useAuth } from '@/contexts/AuthContext'
 import { OracleCard } from '@/components/OracleCard'
 import { cn, getAvatarGradient, getDisplayInfo, checksumAddress } from '@/lib/utils'
 
@@ -122,6 +123,15 @@ function TimelineCard({ oracle, presence, position, index, showOwner = false }: 
                 {oracle.owner_github ? `@${oracle.owner_github}` : `${oracle.owner_wallet!.slice(0, 6)}...${oracle.owner_wallet!.slice(-4)}`}
               </div>
             )}
+            {!showOwner && displayInfo.owner && (
+              <div className={cn(
+                'text-xs text-green-400 flex items-center gap-1 mt-0.5',
+                position === 'left' ? 'justify-end' : 'justify-start'
+              )}>
+                <Sparkles className="h-2.5 w-2.5" />
+                @{displayInfo.owner}
+              </div>
+            )}
             {oracle.bio && (
               <p className="mt-1 text-xs text-slate-400 line-clamp-2">{oracle.bio}</p>
             )}
@@ -156,6 +166,14 @@ interface HumanGroup {
 }
 
 export function World() {
+  const { owner: paramOwner } = useParams<{ owner: string }>()
+  const location = useLocation()
+  const { human } = useAuth()
+
+  // Team mode: URL starts with /team
+  const isTeamMode = location.pathname.startsWith('/team')
+  const owner = paramOwner || (isTeamMode ? human?.github_username ?? null : null)
+
   const [oracles, setOracles] = useState<Oracle[]>([])
   const [allOracles, setAllOracles] = useState<Oracle[]>([])
   const [presenceMap, setPresenceMap] = useState<Map<string, PresenceItem>>(new Map())
@@ -165,31 +183,49 @@ export function World() {
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   useEffect(() => {
-    async function fetchWorld() {
+    async function fetchData() {
       try {
-        const [oraclesResult, presenceData] = await Promise.all([
-          getOracles(1, 200),
-          getPresence(),
-        ])
-        setAllOracles(oraclesResult.items)
-        // Only show verified oracles (have birth_issue) for timeline
-        const verifiedOracles = oraclesResult.items.filter(o => o.birth_issue)
-        setOracles(verifiedOracles)
-        setPresence(presenceData)
+        if (owner) {
+          // Team mode: fetch filtered by owner
+          const [teamOracles, presenceData] = await Promise.all([
+            getTeamOracles(owner),
+            getPresence(),
+          ])
+          setAllOracles(teamOracles)
+          setOracles(teamOracles.filter(o => o.birth_issue))
+          setPresence(presenceData)
 
-        const pMap = new Map<string, PresenceItem>()
-        for (const item of presenceData.items) {
-          pMap.set(item.id, item)
+          const pMap = new Map<string, PresenceItem>()
+          for (const item of presenceData.items) {
+            pMap.set(item.id, item)
+            pMap.set(item.name, item)
+          }
+          setPresenceMap(pMap)
+        } else {
+          // World mode: fetch all
+          const [oraclesResult, presenceData] = await Promise.all([
+            getOracles(1, 200),
+            getPresence(),
+          ])
+          setAllOracles(oraclesResult.items)
+          setOracles(oraclesResult.items.filter(o => o.birth_issue))
+          setPresence(presenceData)
+
+          const pMap = new Map<string, PresenceItem>()
+          for (const item of presenceData.items) {
+            pMap.set(item.id, item)
+            pMap.set(item.name, item)
+          }
+          setPresenceMap(pMap)
         }
-        setPresenceMap(pMap)
       } catch (err) {
-        console.error('Failed to fetch world oracles:', err)
+        console.error('Failed to fetch oracles:', err)
       } finally {
         setIsLoading(false)
       }
     }
-    fetchWorld()
-  }, [])
+    fetchData()
+  }, [owner])
 
   // Directory: group all oracles by owner wallet
   const directoryGroups = useMemo(() => {
@@ -209,7 +245,7 @@ export function World() {
   }, [allOracles])
 
   const getPresenceForOracle = (oracleId: string): PresenceItem | undefined => {
-    return presence?.items.find((p: PresenceItem) => p.id === oracleId)
+    return presenceMap.get(oracleId) || presence?.items.find((p: PresenceItem) => p.id === oracleId)
   }
 
   // Smooth view switch with fade transition
@@ -222,13 +258,13 @@ export function World() {
     }, 300)
   }
 
-  // Auto-morph: directory → timeline after 4 seconds
+  // Auto-morph: directory → timeline after 1 second (world mode only)
   useEffect(() => {
-    if (!isLoading && viewMode === 'directory' && allOracles.length > 0) {
+    if (!isLoading && !owner && viewMode === 'directory' && allOracles.length > 0) {
       const timer = setTimeout(() => switchView('timeline'), 1000)
       return () => clearTimeout(timer)
     }
-  }, [isLoading, allOracles.length])
+  }, [isLoading, allOracles.length, owner])
 
   // Group oracles by owner wallet, then sort each group by birth issue number
   const groupedByHuman = useMemo(() => {
@@ -261,7 +297,7 @@ export function World() {
   }, [oracles])
 
   // All oracles sorted by birth issue for global timeline
-  const allOraclesSorted = useMemo(() => {
+  const sortedOracles = useMemo(() => {
     return [...oracles].sort((a, b) => {
       const aIssue = parseBirthIssue(a.birth_issue)?.issue || 0
       const bIssue = parseBirthIssue(b.birth_issue)?.issue || 0
@@ -269,14 +305,36 @@ export function World() {
     })
   }, [oracles])
 
-  const onlineCount = oracles.filter(o => presenceMap.get(o.id)?.status === 'online').length
-  const awayCount = oracles.filter(o => presenceMap.get(o.id)?.status === 'away').length
+  const onlineCount = oracles.filter(o => (presenceMap.get(o.id) || presenceMap.get(o.name))?.status === 'online').length
+  const awayCount = oracles.filter(o => (presenceMap.get(o.id) || presenceMap.get(o.name))?.status === 'away').length
   const humanCount = groupedByHuman.filter(([id]) => id !== 'unclaimed').length
+  const offlineCount = oracles.length - onlineCount - awayCount
 
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  // Team mode: no owner found
+  if (owner === null && isTeamMode) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-12 text-center">
+          <Users className="h-12 w-12 mx-auto text-slate-600" />
+          <h2 className="mt-4 text-xl font-semibold text-white">No Team Found</h2>
+          <p className="mt-2 text-slate-400">
+            Login as a human user to see your AI team, or visit a specific user's team page.
+          </p>
+          <Link
+            to="/login"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-6 py-3 font-medium text-white hover:bg-orange-600 transition-colors"
+          >
+            Login
+          </Link>
+        </div>
       </div>
     )
   }
@@ -296,50 +354,67 @@ export function World() {
         <div className="absolute -bottom-24 -left-24 h-48 w-48 rounded-full bg-gradient-to-br from-purple-500/10 to-orange-500/10 blur-3xl animate-pulse" style={{ animationDuration: '6s', animationDelay: '2s' }} />
 
         <div className="relative p-6 sm:p-8">
+          {owner && (
+            <Link
+              to="/profile"
+              className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white transition-colors mb-4 group"
+            >
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+              Back to Profile
+            </Link>
+          )}
+
           <div className="flex items-center gap-4">
             <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-500 text-2xl font-bold text-white shadow-lg">
-              <Globe className="h-8 w-8" />
+              {owner ? <Users className="h-8 w-8" /> : <Globe className="h-8 w-8" />}
               <Sparkles className="absolute -top-1 -right-1 h-4 w-4 text-amber-300 animate-pulse" />
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                World's Oracles
+                {owner ? `${owner}'s AI Team` : "World's Oracles"}
               </h1>
               <p className="text-slate-400">
-                {oracles.length} verified Oracle{oracles.length !== 1 ? 's' : ''} across {humanCount} human{humanCount !== 1 ? 's' : ''}
+                {owner
+                  ? `${sortedOracles.length} Oracle${sortedOracles.length !== 1 ? 's' : ''} in the family`
+                  : `${oracles.length} verified Oracle${oracles.length !== 1 ? 's' : ''} across ${humanCount} human${humanCount !== 1 ? 's' : ''}`
+                }
               </p>
             </div>
           </div>
 
           {/* View toggle + Stats */}
           <div className="mt-6 flex flex-wrap items-center gap-4">
-            <div className="flex rounded-lg bg-slate-800/50 p-0.5 ring-1 ring-slate-700">
-              <button
-                onClick={() => switchView('timeline')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
-                  viewMode === 'timeline'
-                    ? 'bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30'
-                    : 'text-slate-400 hover:text-slate-200'
-                )}
-              >
-                <Globe className="h-3.5 w-3.5" />
-                Timeline
-              </button>
-              <button
-                onClick={() => switchView('directory')}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
-                  viewMode === 'directory'
-                    ? 'bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30'
-                    : 'text-slate-400 hover:text-slate-200'
-                )}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Directory
-              </button>
-            </div>
-            <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+            {!owner && (
+              <>
+                <div className="flex rounded-lg bg-slate-800/50 p-0.5 ring-1 ring-slate-700">
+                  <button
+                    onClick={() => switchView('timeline')}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+                      viewMode === 'timeline'
+                        ? 'bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30'
+                        : 'text-slate-400 hover:text-slate-200'
+                    )}
+                  >
+                    <Globe className="h-3.5 w-3.5" />
+                    Timeline
+                  </button>
+                  <button
+                    onClick={() => switchView('directory')}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+                      viewMode === 'directory'
+                        ? 'bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30'
+                        : 'text-slate-400 hover:text-slate-200'
+                    )}
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                    Directory
+                  </button>
+                </div>
+                <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+              </>
+            )}
             <div className="flex items-center gap-2 rounded-lg bg-green-500/10 px-3 py-2 ring-1 ring-green-500/30 transition-all hover:ring-green-500/50 hover:bg-green-500/20 cursor-default">
               <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
               <span className="text-sm text-green-400">{onlineCount} Online</span>
@@ -348,11 +423,30 @@ export function World() {
               <span className="h-2 w-2 rounded-full bg-amber-500" />
               <span className="text-sm text-amber-400">{awayCount} Away</span>
             </div>
-            <div className="flex items-center gap-2 rounded-lg bg-purple-500/10 px-3 py-2 ring-1 ring-purple-500/30 transition-all hover:ring-purple-500/50 hover:bg-purple-500/20 cursor-default">
-              <span className="h-2 w-2 rounded-full bg-purple-500" />
-              <span className="text-sm text-purple-400">{humanCount} Humans</span>
-            </div>
+            {owner ? (
+              <div className="flex items-center gap-2 rounded-lg bg-slate-500/10 px-3 py-2 ring-1 ring-slate-500/30 transition-all hover:ring-slate-500/50 hover:bg-slate-500/20 cursor-default">
+                <span className="h-2 w-2 rounded-full bg-slate-500" />
+                <span className="text-sm text-slate-400">{offlineCount} Offline</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg bg-purple-500/10 px-3 py-2 ring-1 ring-purple-500/30 transition-all hover:ring-purple-500/50 hover:bg-purple-500/20 cursor-default">
+                <span className="h-2 w-2 rounded-full bg-purple-500" />
+                <span className="text-sm text-purple-400">{humanCount} Humans</span>
+              </div>
+            )}
           </div>
+
+          {owner && (
+            <a
+              href={`https://github.com/${owner}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-1 text-sm text-orange-500 hover:text-orange-400 hover:gap-2 transition-all"
+            >
+              <ExternalLink className="h-3 w-3" />
+              @{owner} on GitHub
+            </a>
+          )}
         </div>
       </div>
 
@@ -361,7 +455,8 @@ export function World() {
         'transition-all duration-300',
         isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
       )}>
-      {viewMode === 'directory' ? (
+      {!owner && viewMode === 'directory' ? (
+        /* Directory view (world mode only) */
         <div className="space-y-8">
           {directoryGroups.map(([ownerKey, { github, oracles: groupOracles }]) => (
             <div key={ownerKey}>
@@ -395,12 +490,15 @@ export function World() {
             </div>
           ))}
         </div>
-      ) : allOraclesSorted.length === 0 ? (
+      ) : sortedOracles.length === 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-12 text-center fade-in">
-          <Globe className="h-12 w-12 mx-auto text-slate-600" />
+          {owner ? <Users className="h-12 w-12 mx-auto text-slate-600" /> : <Globe className="h-12 w-12 mx-auto text-slate-600" />}
           <h2 className="mt-4 text-xl font-semibold text-white">No Oracles Yet</h2>
           <p className="mt-2 text-slate-400 max-w-md mx-auto">
-            The network is waiting for its first Oracle to be born.
+            {owner
+              ? "This user hasn't claimed any Oracle agents yet. Oracles can be claimed through the Identity verification process."
+              : 'The network is waiting for its first Oracle to be born.'
+            }
           </p>
         </div>
       ) : (
@@ -410,7 +508,7 @@ export function World() {
             <div className="h-px flex-1 bg-gradient-to-r from-orange-500/50 to-transparent" />
             <span className="text-xs font-medium text-orange-500 uppercase tracking-wider flex items-center gap-2">
               <Sparkles className="h-3 w-3" />
-              Global Birth Timeline
+              {owner ? 'Birth Timeline' : 'Global Birth Timeline'}
               <Sparkles className="h-3 w-3" />
             </span>
             <div className="h-px flex-1 bg-gradient-to-l from-orange-500/50 to-transparent" />
@@ -423,7 +521,7 @@ export function World() {
 
             {/* Timeline items */}
             <div className="relative">
-              {allOraclesSorted.map((oracle, index) => {
+              {sortedOracles.map((oracle, index) => {
                 const position = index % 2 === 0 ? 'left' : 'right'
                 return (
                   <div
@@ -437,10 +535,10 @@ export function World() {
                       {position === 'left' && (
                         <TimelineCard
                           oracle={oracle}
-                          presence={presenceMap.get(oracle.id)}
+                          presence={presenceMap.get(oracle.id) || presenceMap.get(oracle.name)}
                           position="left"
                           index={index}
-                          showOwner={true}
+                          showOwner={!owner}
                         />
                       )}
                     </div>
@@ -463,10 +561,10 @@ export function World() {
                       {position === 'right' && (
                         <TimelineCard
                           oracle={oracle}
-                          presence={presenceMap.get(oracle.id)}
+                          presence={presenceMap.get(oracle.id) || presenceMap.get(oracle.name)}
                           position="right"
                           index={index}
-                          showOwner={true}
+                          showOwner={!owner}
                         />
                       )}
                     </div>
@@ -490,57 +588,59 @@ export function World() {
             </span>
           </div>
 
-          {/* Humans Summary */}
-          <div className="mt-12">
-            <div className="mb-6 flex items-center gap-3">
-              <div className="h-px flex-1 bg-gradient-to-r from-blue-500/50 to-transparent" />
-              <span className="text-xs font-medium text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                <Users className="h-3 w-3" />
-                By Human
-                <Users className="h-3 w-3" />
-              </span>
-              <div className="h-px flex-1 bg-gradient-to-l from-blue-500/50 to-transparent" />
-            </div>
+          {/* Humans Summary (world mode only) */}
+          {!owner && (
+            <div className="mt-12">
+              <div className="mb-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-gradient-to-r from-blue-500/50 to-transparent" />
+                <span className="text-xs font-medium text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                  <Users className="h-3 w-3" />
+                  By Human
+                  <Users className="h-3 w-3" />
+                </span>
+                <div className="h-px flex-1 bg-gradient-to-l from-blue-500/50 to-transparent" />
+              </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {groupedByHuman.map(([humanId, { github, oracles: humanOracles }]) => (
-                <Link
-                  key={humanId}
-                  to={github ? `/team/${github}` : '#'}
-                  className={cn(
-                    'rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition-all',
-                    github && 'hover:border-blue-500/50 hover:bg-slate-800/50 cursor-pointer'
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 text-white font-bold">
-                      {github?.[0]?.toUpperCase() || '?'}
-                    </div>
-                    <div>
-                      <div className="font-medium text-white">
-                        {github ? `@${github}` : 'Unclaimed'}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {humanOracles.length} oracle{humanOracles.length !== 1 ? 's' : ''}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {humanOracles.slice(0, 3).map(o => (
-                      <span key={o.id} className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-                        {o.oracle_name || o.name}
-                      </span>
-                    ))}
-                    {humanOracles.length > 3 && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-500">
-                        +{humanOracles.length - 3} more
-                      </span>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {groupedByHuman.map(([humanId, { github, oracles: humanOracles }]) => (
+                  <Link
+                    key={humanId}
+                    to={github ? `/team/${github}` : '#'}
+                    className={cn(
+                      'rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition-all',
+                      github && 'hover:border-blue-500/50 hover:bg-slate-800/50 cursor-pointer'
                     )}
-                  </div>
-                </Link>
-              ))}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 text-white font-bold">
+                        {github?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <div className="font-medium text-white">
+                          {github ? `@${github}` : 'Unclaimed'}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {humanOracles.length} oracle{humanOracles.length !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {humanOracles.slice(0, 3).map(o => (
+                        <span key={o.id} className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                          {o.oracle_name || o.name}
+                        </span>
+                      ))}
+                      {humanOracles.length > 3 && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-500">
+                          +{humanOracles.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
       </div>

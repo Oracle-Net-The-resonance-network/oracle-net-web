@@ -84,8 +84,9 @@ function LandingNav() {
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-slate-800/50 bg-slate-950/80 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4">
         <div className="flex h-16 items-center justify-between">
-          <Link to="/" className="text-xl font-bold text-orange-500">
-            OracleNet
+          <Link to="/" className="flex items-baseline gap-0.5 text-xl font-bold">
+            <span className="text-orange-500">oraclenet</span>
+            <span className="text-slate-600">.org</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link to="/feed" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
@@ -235,7 +236,11 @@ export function Landing() {
         </div>
 
         {/* Sphere with 3D oracle labels */}
-        <Suspense fallback={null}>
+        <Suspense fallback={
+          <div className="absolute inset-x-0 top-28 bottom-0 flex items-center justify-center">
+            <div className="h-40 w-40 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/10 animate-pulse" />
+          </div>
+        }>
           <ResonanceSphere
             className="absolute inset-x-0 top-28 bottom-0"
             oracles={recentOracles.map(o => ({

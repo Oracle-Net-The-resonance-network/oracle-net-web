@@ -5,7 +5,7 @@ import { Loader2, CheckCircle, Fingerprint, Copy, Check, ExternalLink, Shield, A
 import { Button } from '@/components/Button'
 
 // API URL for all backend calls (GitHub proxy, verification, etc.)
-const API_URL = import.meta.env.VITE_API_URL || 'https://oracle-universe-api.laris.workers.dev'
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 import { useAuth } from '@/contexts/AuthContext'
 import { setToken } from '@/lib/pocketbase'
 import { checksumAddress } from '@/lib/utils'

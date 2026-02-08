@@ -3,6 +3,10 @@ compatibility_date = "2025-01-01"
 workers_dev = true
 account_id = "a5eabdc2b11aae9bd5af46bd6a88179e"
 
+routes = [
+  { pattern = "oraclenet.org", custom_domain = true }
+]
+
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
