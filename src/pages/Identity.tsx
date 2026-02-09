@@ -40,8 +40,9 @@ export function Identity() {
   // Non-persisted state
   const [verificationIssueUrl, setVerificationIssueUrl] = useState('')
   const [signedData, setSignedData] = useState<{ message: string; signature: string } | null>(null)
-  // Track if oracle was already owned before signing (suppresses auto-redirect for re-claims)
+  // Track oracle state at sign time (suppresses instant redirect, but polling detects changes)
   const [wasOwnedBeforeSigning, setWasOwnedBeforeSigning] = useState(false)
+  const [oracleUpdatedAtSign, setOracleUpdatedAtSign] = useState<string | null>(null)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
@@ -182,16 +183,18 @@ export function Identity() {
   // Poll for verification completion (bot may verify from CLI)
   // After user signs, poll oracle list every 3s to detect ownership change
   // For NEW claims: detect oracle appearing in list
-  // For RE-CLAIMS: skip auto-redirect (user completes full re-verify flow via handleVerify)
+  // For RE-CLAIMS: detect updated timestamp change (means API processed new verification)
   useEffect(() => {
-    if (!signedData || verifySuccess || wasOwnedBeforeSigning) return
+    if (!signedData || verifySuccess) return
     const interval = setInterval(async () => {
       await refreshAuth()
       const result = await getOracles(1, 200)
       const matched = result.items.find(o => o.birth_issue === birthUrlForPoll)
       if (!matched) return // Not yet created
-      // Only auto-redirect if this wallet now owns it (handles new claims)
+      // Only auto-redirect if this wallet now owns it
       if (matched.owner_wallet?.toLowerCase() !== address?.toLowerCase()) return
+      // For re-claims: only redirect when oracle record was actually updated (new verification)
+      if (wasOwnedBeforeSigning && oracleUpdatedAtSign && matched.updated === oracleUpdatedAtSign) return
       setVerifySuccess({
         oracle_name: matched.oracle_name || matched.name || oracleName,
         github_username: human?.github_username || ''
@@ -200,7 +203,7 @@ export function Identity() {
       setTimeout(() => navigate(dest), 2000)
     }, 3000)
     return () => clearInterval(interval)
-  }, [signedData, verifySuccess, wasOwnedBeforeSigning, refreshAuth, birthUrlForPoll, oracleName, human, navigate, address])
+  }, [signedData, verifySuccess, wasOwnedBeforeSigning, oracleUpdatedAtSign, refreshAuth, birthUrlForPoll, oracleName, human, navigate, address])
 
   // Auto-redirect when oracle matching current birth issue appears in auth context (new claims only)
   // Skip for re-claims (wasOwnedBeforeSigning) — user must complete full re-verify flow
@@ -302,10 +305,11 @@ export function Identity() {
     if (!address || !birthIssueUrl || !oracleName.trim()) return
     setVerifyError(null)
     // Check if oracle is already owned by this wallet before signing
-    // (suppresses auto-redirect for re-claims — user must complete full re-verify flow)
+    // Suppresses instant redirect, but polling still detects changes via updated timestamp
     const matchedOracle = oracles.find(o => o.birth_issue === birthUrlForPoll)
     const alreadyOwned = !!matchedOracle && matchedOracle.owner_wallet?.toLowerCase() === address?.toLowerCase()
     setWasOwnedBeforeSigning(alreadyOwned)
+    setOracleUpdatedAtSign(matchedOracle?.updated || null)
     const message = await getVerifyMessage()
     if (!message) return
     try {
