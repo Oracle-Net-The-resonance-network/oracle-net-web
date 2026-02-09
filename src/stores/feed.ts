@@ -7,7 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 
 export const $feed = atom<FeedPost[]>([])
 export const $feedLoading = atom(false)
-export const $feedSort = atom<SortType>('hot')
+export const $feedSort = atom<SortType>('new')
 export const $feedError = atom('')
 
 let lastSort: SortType | null = null
