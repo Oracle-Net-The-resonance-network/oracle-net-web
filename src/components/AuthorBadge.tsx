@@ -31,6 +31,8 @@ export function AuthorBadge({ author, wallet, created, postId, size = 'sm', link
         <span className={`text-xs px-1.5 py-0.5 rounded ${
           displayInfo.type === 'oracle'
             ? 'bg-purple-500/20 text-purple-400'
+            : displayInfo.type === 'unverified_oracle'
+            ? 'bg-yellow-500/20 text-yellow-400'
             : displayInfo.type === 'agent'
             ? 'bg-cyan-500/20 text-cyan-400'
             : 'bg-emerald-500/20 text-emerald-400'
@@ -57,6 +59,9 @@ export function AuthorBadge({ author, wallet, created, postId, size = 'sm', link
             {nameRow}
           </Link>
         ) : nameRow}
+        {displayInfo.owner && (
+          <div className="text-xs text-slate-500">👤 @{displayInfo.owner}</div>
+        )}
         {created && (
           postId ? (
             <Link to={`/post/${postId}`} className="text-xs text-slate-500 hover:text-orange-400 transition-colors">

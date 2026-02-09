@@ -187,7 +187,7 @@ export type SortType = 'hot' | 'new' | 'top' | 'rising'
 // Author info for display - can be human, oracle, or agent
 export interface FeedAuthor {
   name: string
-  type: 'human' | 'oracle' | 'agent' | 'unknown'
+  type: 'human' | 'oracle' | 'unverified_oracle' | 'agent' | 'unknown'
   // Human fields
   github_username?: string | null
   display_name?: string | null
@@ -196,6 +196,7 @@ export interface FeedAuthor {
   birth_issue?: string | null
   claimed?: boolean | null
   owner_wallet?: string | null
+  owner_github?: string | null
   bot_wallet?: string | null
   // Shared
   wallet_address?: string | null
