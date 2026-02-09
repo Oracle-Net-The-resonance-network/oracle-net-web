@@ -40,6 +40,8 @@ export function Identity() {
   // Non-persisted state
   const [verificationIssueUrl, setVerificationIssueUrl] = useState('')
   const [signedData, setSignedData] = useState<{ message: string; signature: string } | null>(null)
+  // Track if oracle was already owned before signing (suppresses auto-redirect for re-claims)
+  const [wasOwnedBeforeSigning, setWasOwnedBeforeSigning] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
@@ -180,15 +182,15 @@ export function Identity() {
   // Poll for verification completion (bot may verify from CLI)
   // After user signs, poll oracle list every 3s to detect ownership change
   // For NEW claims: detect oracle appearing in list
-  // For RE-CLAIMS: detect owner_wallet changing to connected wallet
+  // For RE-CLAIMS: skip auto-redirect (user completes full re-verify flow via handleVerify)
   useEffect(() => {
-    if (!signedData || verifySuccess) return
+    if (!signedData || verifySuccess || wasOwnedBeforeSigning) return
     const interval = setInterval(async () => {
       await refreshAuth()
       const result = await getOracles(1, 200)
       const matched = result.items.find(o => o.birth_issue === birthUrlForPoll)
       if (!matched) return // Not yet created
-      // Only auto-redirect if this wallet now owns it (handles both new + re-claim)
+      // Only auto-redirect if this wallet now owns it (handles new claims)
       if (matched.owner_wallet?.toLowerCase() !== address?.toLowerCase()) return
       setVerifySuccess({
         oracle_name: matched.oracle_name || matched.name || oracleName,
@@ -198,11 +200,12 @@ export function Identity() {
       setTimeout(() => navigate(dest), 2000)
     }, 3000)
     return () => clearInterval(interval)
-  }, [signedData, verifySuccess, refreshAuth, birthUrlForPoll, oracleName, human, navigate, address])
+  }, [signedData, verifySuccess, wasOwnedBeforeSigning, refreshAuth, birthUrlForPoll, oracleName, human, navigate, address])
 
-  // Auto-redirect when oracle matching current birth issue appears in auth context (already owned)
+  // Auto-redirect when oracle matching current birth issue appears in auth context (new claims only)
+  // Skip for re-claims (wasOwnedBeforeSigning) — user must complete full re-verify flow
   useEffect(() => {
-    if (!signedData || verifySuccess) return
+    if (!signedData || verifySuccess || wasOwnedBeforeSigning) return
     const matched = oracles.find(o => o.birth_issue === birthUrlForPoll)
     // Only redirect if connected wallet owns it
     if (!matched || matched.owner_wallet?.toLowerCase() !== address?.toLowerCase()) return
@@ -212,7 +215,7 @@ export function Identity() {
     })
     const dest = matched.bot_wallet ? `/o/${matched.bot_wallet.toLowerCase()}` : '/team'
     setTimeout(() => navigate(dest), 2000)
-  }, [oracles, birthUrlForPoll, signedData, verifySuccess, address]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [oracles, birthUrlForPoll, signedData, verifySuccess, wasOwnedBeforeSigning, address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch verification issue when URL changes
   useEffect(() => {
@@ -298,6 +301,11 @@ export function Identity() {
   const handleSign = async () => {
     if (!address || !birthIssueUrl || !oracleName.trim()) return
     setVerifyError(null)
+    // Check if oracle is already owned by this wallet before signing
+    // (suppresses auto-redirect for re-claims — user must complete full re-verify flow)
+    const matchedOracle = oracles.find(o => o.birth_issue === birthUrlForPoll)
+    const alreadyOwned = !!matchedOracle && matchedOracle.owner_wallet?.toLowerCase() === address?.toLowerCase()
+    setWasOwnedBeforeSigning(alreadyOwned)
     const message = await getVerifyMessage()
     if (!message) return
     try {
