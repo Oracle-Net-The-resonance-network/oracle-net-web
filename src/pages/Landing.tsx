@@ -96,6 +96,9 @@ function LandingNav() {
             <Link to="/world" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
               Oracles
             </Link>
+            <a href="https://story.oraclenet.org" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
+              Story
+            </a>
             {isConnected && address && isAuthenticated ? (
               <>
                 <Link to="/identity" className="text-slate-400 hover:text-slate-200 transition-colors" title="Identity">
