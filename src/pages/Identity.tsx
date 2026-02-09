@@ -7,7 +7,7 @@ import { Button } from '@/components/Button'
 // API URL for all backend calls (GitHub proxy, verification, etc.)
 const API_URL = import.meta.env.VITE_API_URL || 'https://api.oraclenet.org'
 import { useAuth } from '@/contexts/AuthContext'
-import { setToken, getOracles } from '@/lib/pocketbase'
+import { setToken, getOracles, type Oracle } from '@/lib/pocketbase'
 import { checksumAddress } from '@/lib/utils'
 
 const BIRTH_ISSUE_KEY = 'oracle-identity-birth-issue'
@@ -175,22 +175,7 @@ export function Identity() {
     return `https://github.com/${DEFAULT_BIRTH_REPO}/issues/${input.trim()}`
   }
 
-  // Check on page load if oracle is already claimed (e.g. CLI claimed while browser was open)
   const birthUrlForPoll = normalizeBirthIssueUrl(birthIssueUrl)
-  useEffect(() => {
-    if (verifySuccess || !birthUrlForPoll) return
-    getOracles(1, 200).then(result => {
-      const matched = result.items.find(o => o.birth_issue === birthUrlForPoll)
-      if (matched) {
-        setVerifySuccess({
-          oracle_name: matched.oracle_name || matched.name || oracleName,
-          github_username: human?.github_username || ''
-        })
-        const dest = matched.bot_wallet ? `/o/${matched.bot_wallet.toLowerCase()}` : '/team'
-        setTimeout(() => navigate(dest), 2000)
-      }
-    })
-  }, [birthUrlForPoll]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll for verification completion (bot may verify from CLI)
   // After user signs, poll oracle list every 3s to detect new oracle
@@ -451,9 +436,29 @@ ${getSignedBody()}
   const claimBot = searchParams.get('bot')
   const hasClaim = !!(claimBirth || claimName || claimBot)
 
-  // Check if this oracle is already claimed by the connected wallet
+  // Check if oracle already exists in DB (info only — no redirect, allows re-claiming)
+  // Fetch from PUBLIC oracle list so we detect oracles owned by ANY wallet, not just the connected one
   const claimBirthUrl = claimBirth ? `https://github.com/${DEFAULT_BIRTH_REPO}/issues/${claimBirth}` : null
-  const alreadyClaimed = claimBirthUrl ? oracles.find(o => o.birth_issue === claimBirthUrl) : null
+  const [publicOracleMatch, setPublicOracleMatch] = useState<Oracle | null>(null)
+
+  useEffect(() => {
+    if (!claimBirthUrl) {
+      setPublicOracleMatch(null)
+      return
+    }
+    let cancelled = false
+    getOracles(1, 200).then(result => {
+      if (cancelled) return
+      const match = result.items.find(o => o.birth_issue === claimBirthUrl) || null
+      setPublicOracleMatch(match)
+    }).catch(() => {
+      if (!cancelled) setPublicOracleMatch(null)
+    })
+    return () => { cancelled = true }
+  }, [claimBirthUrl])
+
+  // Use public match (works across wallets) with fallback to auth context
+  const alreadyClaimed = publicOracleMatch || (claimBirthUrl ? oracles.find(o => o.birth_issue === claimBirthUrl) : null) || null
 
   // Not connected
   if (!isConnected) {
@@ -555,29 +560,31 @@ ${getSignedBody()}
           </button>
         </div>
 
-        {/* Already Claimed Banner — oracle is owned by this wallet */}
-        {alreadyClaimed && (
-          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-b from-emerald-500/10 to-transparent p-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-full bg-emerald-500/20 p-2">
-                <CheckCircle className="h-5 w-5 text-emerald-400" />
+        {/* Already registered info — no redirect, user can still re-claim */}
+        {alreadyClaimed && !verifySuccess && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-amber-300">
+                  Re-Verify: {alreadyClaimed.oracle_name || alreadyClaimed.name}
+                </div>
+                {alreadyClaimed.owner_wallet?.toLowerCase() === address?.toLowerCase() ? (
+                  <p className="text-xs text-slate-400">You already own this oracle. Re-verifying will refresh the proof.</p>
+                ) : (
+                  <>
+                    <div className="text-xs space-y-1">
+                      <div className="text-slate-500">
+                        Current owner: <span className="font-mono text-slate-400">{alreadyClaimed.owner_wallet?.slice(0, 6)}...{alreadyClaimed.owner_wallet?.slice(-4)}</span>
+                      </div>
+                      <div className="text-slate-500">
+                        Your wallet: <span className="font-mono text-amber-300">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-amber-400/80">Re-claiming will transfer ownership to your wallet.</p>
+                  </>
+                )}
               </div>
-              <div>
-                <h2 className="text-lg font-semibold text-emerald-400">Already Verified</h2>
-                <p className="text-sm text-slate-400">
-                  <span className="font-medium text-emerald-300">{alreadyClaimed.oracle_name || alreadyClaimed.name}</span>
-                  {' '}is already claimed by this wallet
-                </p>
-              </div>
-            </div>
-            <div className="mt-3 flex gap-2">
-              <Link
-                to={alreadyClaimed.bot_wallet ? `/o/${alreadyClaimed.bot_wallet.toLowerCase()}` : `/u/${checksumAddress(alreadyClaimed.owner_wallet) || alreadyClaimed.id}`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 text-xs text-purple-300 hover:bg-purple-500/20 transition-colors"
-              >
-                View Profile
-                <ExternalLink className="h-3 w-3" />
-              </Link>
             </div>
           </div>
         )}
@@ -664,7 +671,7 @@ ${getSignedBody()}
         )}
 
         {/* Single-Step Verification Form - hide when this specific claim is already owned */}
-        {!verifySuccess && !(hasClaim && alreadyClaimed) && (
+        {!verifySuccess && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
             <h2 className="text-lg font-bold text-slate-100 mb-4">Verify Your Oracle</h2>
 
@@ -783,7 +790,7 @@ ${getSignedBody()}
                       Signing...
                     </>
                   ) : (
-                    'Sign to Continue'
+                    alreadyClaimed ? 'Sign to Re-Claim' : 'Sign to Continue'
                   )}
                 </Button>
               </div>
@@ -914,7 +921,7 @@ After running, paste the issue URL in the field below.`, 'ghCmd')}
                         Verifying...
                       </>
                     ) : (
-                      'Verify Identity'
+                      alreadyClaimed ? 'Re-Verify Identity' : 'Verify Identity'
                     )}
                   </Button>
                 </div>

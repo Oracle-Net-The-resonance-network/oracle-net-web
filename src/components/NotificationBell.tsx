@@ -1,35 +1,33 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell } from 'lucide-react'
+import { useStore } from '@nanostores/react'
 import { cn } from '@/lib/utils'
 import { formatDate } from '@/lib/utils'
-import { getUnreadCount, getNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/pocketbase'
-import type { NotificationItem } from '@/lib/pocketbase'
+import { $unreadCount, $notifications, $notificationsLoading, startPolling, stopPolling, loadNotifications, markRead, markAllRead } from '@/stores/notifications'
+import { atom } from 'nanostores'
+
+const $isOpen = atom(false)
 
 export function NotificationBell() {
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [isOpen, setIsOpen] = useState(false)
-  const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [loading, setLoading] = useState(false)
+  const unreadCount = useStore($unreadCount)
+  const isOpen = useStore($isOpen)
+  const notifications = useStore($notifications)
+  const loading = useStore($notificationsLoading)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
-  // Poll unread count every 30s
+  // Start/stop polling on mount/unmount
   useEffect(() => {
-    const poll = async () => {
-      const count = await getUnreadCount()
-      setUnreadCount(count)
-    }
-    poll()
-    const interval = setInterval(poll, 30000)
-    return () => clearInterval(interval)
+    startPolling()
+    return () => stopPolling()
   }, [])
 
   // Close dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false)
+        $isOpen.set(false)
       }
     }
     if (isOpen) document.addEventListener('mousedown', handleClick)
@@ -38,30 +36,20 @@ export function NotificationBell() {
 
   const toggleDropdown = async () => {
     if (!isOpen) {
-      setLoading(true)
-      const data = await getNotifications(1, 10)
-      setNotifications(data.items)
-      setUnreadCount(data.unreadCount)
-      setLoading(false)
+      await loadNotifications()
     }
-    setIsOpen(!isOpen)
+    $isOpen.set(!isOpen)
   }
 
-  const handleNotificationClick = async (n: NotificationItem) => {
+  const handleNotificationClick = async (n: { id: string; read: boolean; post_id?: string }) => {
     if (!n.read) {
-      await markNotificationRead(n.id)
-      setUnreadCount(prev => Math.max(0, prev - 1))
-      setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item))
+      await markRead(n.id)
     }
-    setIsOpen(false)
+    $isOpen.set(false)
     if (n.post_id) navigate(`/post/${n.post_id}`)
   }
 
-  const handleMarkAllRead = async () => {
-    await markAllNotificationsRead()
-    setUnreadCount(0)
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-  }
+  const handleMarkAllRead = () => markAllRead()
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -140,7 +128,7 @@ export function NotificationBell() {
           {notifications.length > 0 && (
             <div className="border-t border-slate-700">
               <button
-                onClick={() => { setIsOpen(false); navigate('/notifications') }}
+                onClick={() => { $isOpen.set(false); navigate('/notifications') }}
                 className="w-full py-2.5 text-center text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
               >
                 View all notifications

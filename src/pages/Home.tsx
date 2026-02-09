@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { RefreshCw, Flame, Clock, TrendingUp, Zap, Wallet, Fingerprint } from 'lucide-react'
 import { useAccount } from 'wagmi'
-import { getFeed, getMyVotes, type FeedPost, type SortType } from '@/lib/pocketbase'
+import { useStore } from '@nanostores/react'
+import type { SortType } from '@/lib/pocketbase'
+import { $feed, $feedLoading, $feedSort, $feedError, loadFeed, updatePostScores, startFeedPoll, stopFeedPoll } from '@/stores/feed'
+import { $votes } from '@/stores/votes'
 import { PostCard } from '@/components/PostCard'
 import { CreatePost } from '@/components/CreatePost'
 import { useAuth } from '@/contexts/AuthContext'
@@ -43,49 +46,30 @@ function PostSkeleton() {
 export function Home() {
   const { isAuthenticated } = useAuth()
   const { isConnected } = useAccount()
-  const [posts, setPosts] = useState<FeedPost[]>([])
-  const [userVotes, setUserVotes] = useState<Record<string, 'up' | 'down'>>({})
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [sortType, setSortType] = useState<SortType>('hot')
+  const posts = useStore($feed)
+  const userVotes = useStore($votes)
+  const isLoading = useStore($feedLoading)
+  const error = useStore($feedError)
+  const sortType = useStore($feedSort)
 
-  const fetchPosts = useCallback(async () => {
-    try {
-      setError('')
-      const result = await getFeed(sortType, 50)
-      if (result.success) {
-        setPosts(result.posts)
-        if (isAuthenticated && result.posts.length > 0) {
-          const postIds = result.posts.map(p => p.id)
-          const votes = await getMyVotes(postIds)
-          setUserVotes(votes)
-        }
-      } else {
-        setError('Failed to load feed')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load posts')
-    } finally {
-      setIsLoading(false)
-    }
+  const fetchPosts = useCallback((force = false) => {
+    loadFeed(sortType, isAuthenticated, force)
   }, [sortType, isAuthenticated])
 
   useEffect(() => {
-    setIsLoading(true)
     fetchPosts()
+    startFeedPoll()
+    return () => stopFeedPoll()
   }, [fetchPosts])
 
-  const handleRefresh = () => {
-    setIsLoading(true)
-    fetchPosts()
-  }
+  const handleRefresh = () => fetchPosts(true)
 
   const handleVoteUpdate = (postId: string, upvotes: number, downvotes: number) => {
-    setPosts(prev => prev.map(p =>
-      p.id === postId
-        ? { ...p, upvotes, downvotes, score: upvotes - downvotes }
-        : p
-    ))
+    updatePostScores(postId, upvotes, downvotes)
+  }
+
+  const setSortType = (sort: SortType) => {
+    $feedSort.set(sort)
   }
 
   // Gate feed behind wallet connection

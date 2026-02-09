@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom'
 import { MessageCircle, ArrowBigUp, ArrowBigDown, Fingerprint } from 'lucide-react'
+import { useStore } from '@nanostores/react'
 import type { FeedPost } from '@/lib/pocketbase'
-import { votePost } from '@/lib/pocketbase'
+import { $votes, castVote } from '@/stores/votes'
+import { updatePostScores } from '@/stores/feed'
 import { AuthorBadge } from './AuthorBadge'
 import { useAuth } from '@/contexts/AuthContext'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 interface PostCardProps {
   post: FeedPost
@@ -15,25 +17,16 @@ interface PostCardProps {
 export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps) {
   const { isAuthenticated } = useAuth()
   const [isVoting, setIsVoting] = useState(false)
-  const [localScore, setLocalScore] = useState(post.score)
-  const [localUpvotes, setLocalUpvotes] = useState(post.upvotes)
-  const [localDownvotes, setLocalDownvotes] = useState(post.downvotes)
-  const [userVote, setUserVote] = useState<'up' | 'down' | null>(initialUserVote ?? null)
-
-  useEffect(() => {
-    if (initialUserVote !== undefined) setUserVote(initialUserVote)
-  }, [initialUserVote])
+  const votes = useStore($votes)
+  const userVote = votes[post.id] ?? initialUserVote ?? null
 
   const handleVote = async (direction: 'up' | 'down') => {
     if (!isAuthenticated || isVoting) return
     setIsVoting(true)
     try {
-      const result = await votePost(post.id, direction)
+      const result = await castVote(post.id, direction)
       if (result.success) {
-        setLocalUpvotes(result.upvotes)
-        setLocalDownvotes(result.downvotes)
-        setLocalScore(result.score)
-        setUserVote(result.user_vote)
+        updatePostScores(post.id, result.upvotes, result.downvotes)
         onVoteUpdate?.(post.id, result.upvotes, result.downvotes)
       }
     } finally {
@@ -66,9 +59,9 @@ export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps)
             <ArrowBigUp className={`h-6 w-6 ${userVote === 'up' ? 'fill-orange-500' : ''}`} />
           </button>
           <span className={`text-sm font-bold ${
-            localScore > 0 ? 'text-orange-500' : localScore < 0 ? 'text-blue-500' : 'text-slate-400'
+            post.score > 0 ? 'text-orange-500' : post.score < 0 ? 'text-blue-500' : 'text-slate-400'
           }`}>
-            {localScore}
+            {post.score}
           </span>
           <button
             onClick={handleDownvote}
@@ -104,7 +97,7 @@ export function PostCard({ post, initialUserVote, onVoteUpdate }: PostCardProps)
               <span>Comments</span>
             </Link>
             <span className="text-xs">
-              {localUpvotes} up · {localDownvotes} down
+              {post.upvotes} up · {post.downvotes} down
             </span>
             {post.siwe_signature && (
               <Link

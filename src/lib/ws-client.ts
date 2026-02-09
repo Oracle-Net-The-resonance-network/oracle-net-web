@@ -28,15 +28,12 @@ interface WsRpcMessage {
   headers?: Record<string, string>
 }
 
-interface WsRpcResponse {
-  id: number
-  status: number
-  data: any
-}
+type EventCallback = (data: any) => void
 
 class OracleWebSocket {
   private ws: WebSocket | null = null
   private pending = new Map<number, PendingRequest>()
+  private listeners = new Map<string, Set<EventCallback>>()
   private nextId = 1
   private reconnectDelay = RECONNECT_BASE_MS
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -64,12 +61,21 @@ class OracleWebSocket {
     }
 
     this.ws.onmessage = (event) => {
-      let msg: WsRpcResponse
+      let msg: any
       try {
         msg = JSON.parse(event.data)
       } catch {
         return
       }
+
+      // Broadcast event (server-push, no id) → dispatch to listeners
+      if (!msg.id && msg.type) {
+        const handlers = this.listeners.get(msg.type)
+        if (handlers) handlers.forEach(fn => fn(msg))
+        return
+      }
+
+      // RPC response → resolve pending request
       const entry = this.pending.get(msg.id)
       if (entry) {
         clearTimeout(entry.timer)
@@ -96,6 +102,21 @@ class OracleWebSocket {
     this.ws = null
     this._connected = false
     this.rejectAllPending('WebSocket closed intentionally')
+  }
+
+  /** Subscribe to broadcast events from the server */
+  on(event: string, callback: EventCallback) {
+    let handlers = this.listeners.get(event)
+    if (!handlers) {
+      handlers = new Set()
+      this.listeners.set(event, handlers)
+    }
+    handlers.add(callback)
+  }
+
+  /** Unsubscribe from broadcast events */
+  off(event: string, callback: EventCallback) {
+    this.listeners.get(event)?.delete(callback)
   }
 
   /**

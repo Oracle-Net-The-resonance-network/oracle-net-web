@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
 import { Loader2, Globe, ExternalLink, ShieldCheck, Sparkles, Users, User, LayoutGrid, ArrowLeft } from 'lucide-react'
-import { getOracles, getTeamOracles, getPresence, type Oracle, type PresenceItem, type PresenceResponse } from '@/lib/pocketbase'
+import { useStore } from '@nanostores/react'
+import type { Oracle, PresenceItem } from '@/lib/pocketbase'
+import { $oracles, $oraclesLoading, $presenceMap, $presence, loadOracles, loadTeamOracles } from '@/stores/oracles'
 import { useAuth } from '@/contexts/AuthContext'
 import { OracleCard } from '@/components/OracleCard'
 import { cn, getAvatarGradient, getDisplayInfo, checksumAddress } from '@/lib/utils'
@@ -192,58 +194,27 @@ export function World() {
   const isTeamMode = location.pathname.startsWith('/team')
   const owner = paramOwner || (isTeamMode ? human?.github_username ?? null : null)
 
-  const [oracles, setOracles] = useState<Oracle[]>([])
-  const [allOracles, setAllOracles] = useState<Oracle[]>([])
-  const [presenceMap, setPresenceMap] = useState<Map<string, PresenceItem>>(new Map())
-  const [presence, setPresence] = useState<PresenceResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const globalOracles = useStore($oracles)
+  const isLoading = useStore($oraclesLoading)
+  const presenceMap = useStore($presenceMap)
+  const presence = useStore($presence)
+
+  // Team mode uses local state for filtered oracles
+  const [teamOracles, setTeamOracles] = useState<Oracle[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>(owner ? 'timeline' : 'directory')
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        if (owner) {
-          // Team mode: fetch filtered by owner
-          const [teamOracles, presenceData] = await Promise.all([
-            getTeamOracles(owner),
-            getPresence(),
-          ])
-          setAllOracles(teamOracles)
-          setOracles(teamOracles.filter(o => o.birth_issue))
-          setPresence(presenceData)
-
-          const pMap = new Map<string, PresenceItem>()
-          for (const item of presenceData.items) {
-            pMap.set(item.id, item)
-            pMap.set(item.name, item)
-          }
-          setPresenceMap(pMap)
-        } else {
-          // World mode: fetch all
-          const [oraclesResult, presenceData] = await Promise.all([
-            getOracles(1, 200),
-            getPresence(),
-          ])
-          setAllOracles(oraclesResult.items)
-          setOracles(oraclesResult.items.filter(o => o.birth_issue))
-          setPresence(presenceData)
-
-          const pMap = new Map<string, PresenceItem>()
-          for (const item of presenceData.items) {
-            pMap.set(item.id, item)
-            pMap.set(item.name, item)
-          }
-          setPresenceMap(pMap)
-        }
-      } catch (err) {
-        console.error('Failed to fetch oracles:', err)
-      } finally {
-        setIsLoading(false)
-      }
+    if (owner) {
+      loadTeamOracles(owner).then(oracles => setTeamOracles(oracles))
+    } else {
+      loadOracles()
     }
-    fetchData()
   }, [owner])
+
+  // Derive allOracles and oracles from store or team state
+  const allOracles = owner ? teamOracles : globalOracles
+  const oracles = useMemo(() => allOracles.filter(o => o.birth_issue), [allOracles])
 
   // Directory: group all oracles by owner (prefer github username, fall back to wallet)
   const directoryGroups = useMemo(() => {
@@ -328,7 +299,7 @@ export function World() {
   const humanCount = groupedByHuman.filter(([id]) => id !== 'unclaimed').length
   const offlineCount = oracles.length - onlineCount - awayCount
 
-  if (isLoading) {
+  if (isLoading || (allOracles.length === 0 && !owner && globalOracles.length === 0)) {
     return (
       <div className="flex justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
